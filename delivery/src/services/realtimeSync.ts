@@ -1,14 +1,25 @@
 import { useShopStore } from '../stores/shopStore';
 
+// Dynamic Sync URL: Reads cloud env variable or local host fallback
 export const getSyncServerUrl = () => {
-  if (process.env.EXPO_PUBLIC_SYNC_SERVER_URL) {
-    return process.env.EXPO_PUBLIC_SYNC_SERVER_URL;
+  let url = process.env.EXPO_PUBLIC_SYNC_SERVER_URL;
+  if (url) {
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = `https://${url}`;
+    }
+    return url.replace(/\/$/, '');
   }
+
+  // Local development fallback
   if (typeof window !== 'undefined' && window.location && window.location.hostname) {
     const host = window.location.hostname;
-    return `http://${host}:5000`;
+    if (host === 'localhost' || host === '127.0.0.1' || host.startsWith('192.168.') || host.startsWith('10.')) {
+      return `http://${host}:5000`;
+    }
   }
-  return 'http://localhost:5000';
+
+  // Production Render cloud fallback
+  return 'https://localmart-sync-api.onrender.com';
 };
 
 const SYNC_SERVER_HTTP = `${getSyncServerUrl()}/api`;
