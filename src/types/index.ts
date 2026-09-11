@@ -75,14 +75,15 @@ export interface Product {
   shop?: Shop;
 }
 
-// Order types
-export type OrderStatus = 'pending' | 'accepted' | 'preparing' | 'ready' | 'out_for_delivery' | 'delivered' | 'cancelled';
-export type PaymentMethod = 'cod';
-export type PaymentStatus = 'pending' | 'paid';
+export type OrderStatus = 'pending' | 'accepted' | 'preparing' | 'ready' | 'delivery_accepted' | 'picked_up' | 'out_for_delivery' | 'delivered' | 'cancelled';
+export type PaymentMethod = 'online' | 'upi_on_delivery' | 'cod' | 'upi' | 'card';
+export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded';
 
 export interface Order {
   id: string;
   customer_id: string;
+  customer_name?: string;
+  customer_phone?: string;
   shop_id: string;
   status: OrderStatus;
   subtotal: number;
@@ -91,8 +92,16 @@ export interface Order {
   delivery_address: string;
   delivery_lat: number;
   delivery_lng: number;
+  delivery_partner_id?: string;
+  delivery_partner_name?: string;
+  delivery_partner_phone?: string;
+  picked_up_at?: string;
+  delivered_at?: string;
   payment_method: PaymentMethod;
   payment_status: PaymentStatus;
+  payment_id?: string;
+  payment_time?: string;
+  paid_amount?: number;
   notes?: string;
   created_at: string;
   updated_at: string;

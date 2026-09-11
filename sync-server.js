@@ -2,7 +2,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-const PORT = process.env.SYNC_PORT || 5000;
+const PORT = process.env.PORT || process.env.SYNC_PORT || 5000;
 const DB_FILE = path.join(__dirname, 'shared_database.json');
 
 // Default initial database state

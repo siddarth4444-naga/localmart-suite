@@ -146,10 +146,13 @@ export default function ManageShopProductsScreen() {
     <SafeAreaView style={styles.container} edges={['bottom']}>
       {/* Header Info */}
       <View style={styles.shopBanner}>
-        <View style={{ flex: 1 }}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <Ionicons name="arrow-back" size={20} color="#0F172A" />
+        </TouchableOpacity>
+        <View style={{ flex: 1, marginLeft: 10 }}>
           <Text style={styles.bannerShopName}>{shop?.name || 'Shop'}</Text>
           <Text style={styles.bannerSubtitle}>
-            {shopProducts.length} items listed • Real-time synced with customer app
+            {shopProducts.length} items listed • Real-time synced
           </Text>
         </View>
 
@@ -372,6 +375,13 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
+  },
+  backBtn: {
+    padding: 6,
+    borderRadius: 8,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
   bannerShopName: {
     fontSize: 16,

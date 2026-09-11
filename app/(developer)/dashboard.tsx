@@ -134,12 +134,20 @@ export default function DeveloperDashboardScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Developer Header Bar */}
       <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <View style={styles.devTag}>
-            <Ionicons name="code-slash" size={14} color="#10B981" />
-            <Text style={styles.devTagText}>DEVELOPER / ADMIN PORTAL</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <TouchableOpacity 
+            onPress={() => router.canGoBack() ? router.back() : router.replace('/')} 
+            style={styles.headerBackBtn}
+          >
+            <Ionicons name="arrow-back" size={20} color="#111827" />
+          </TouchableOpacity>
+          <View style={styles.headerLeft}>
+            <View style={styles.devTag}>
+              <Ionicons name="code-slash" size={14} color="#10B981" />
+              <Text style={styles.devTagText}>DEVELOPER / ADMIN</Text>
+            </View>
+            <Text style={styles.headerTitle}>Store Hub</Text>
           </View>
-          <Text style={styles.headerTitle}>Store Management</Text>
         </View>
 
         <TouchableOpacity 
@@ -456,13 +464,20 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
+  },
+  headerBackBtn: {
+    padding: 6,
+    borderRadius: 8,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
   headerLeft: {
     flex: 1,

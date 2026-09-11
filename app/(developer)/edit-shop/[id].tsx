@@ -157,6 +157,17 @@ export default function EditShopScreen() {
         style={{ flex: 1 }}
       >
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+          {/* Top Header */}
+          <View style={styles.topHeader}>
+            <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+              <Ionicons name="arrow-back" size={22} color="#0F172A" />
+            </TouchableOpacity>
+            <View style={{ flex: 1, marginLeft: 10 }}>
+              <Text style={styles.pageTitle}>Edit Shop Profile</Text>
+              <Text style={styles.pageSubtitle} numberOfLines={1}>{shop.name}</Text>
+            </View>
+          </View>
+
           {/* Details Card */}
           <View style={styles.sectionCard}>
             <Text style={styles.sectionTitle}>Shop & Owner Profile</Text>
@@ -394,11 +405,27 @@ const styles = StyleSheet.create({
     color: '#64748B',
     marginBottom: 12,
   },
+  topHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
   backBtn: {
-    backgroundColor: '#10B981',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 8,
+    padding: 8,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  pageTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#0F172A',
+  },
+  pageSubtitle: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 1,
   },
   sectionCard: {
     backgroundColor: '#FFFFFF',
