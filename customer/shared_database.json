@@ -1,0 +1,191 @@
+{
+  "shops": [
+    {
+      "id": "shop_1788851176854",
+      "owner_id": "owner_1788851176850",
+      "owner_email": "0@gmail.com",
+      "name": "Shop Owner's Store",
+      "description": "Official Store of Shop Owner",
+      "address": "Neighborhood Area, Hyderabad",
+      "latitude": 17.4142,
+      "longitude": 78.4335,
+      "phone": "+91 98480 12345",
+      "is_active": true,
+      "isOpen": true,
+      "opening_time": "07:00:00",
+      "closing_time": "22:00:00",
+      "delivery_radius_km": 5,
+      "min_order_amount": 50,
+      "delivery_fee": 0,
+      "created_at": "2026-09-08T07:06:16.854Z",
+      "cover_image_url": "https://images.unsplash.com/photo-1578916171728-46686eac8d58?auto=format&fit=crop&w=600&q=80",
+      "logo_url": "https://images.unsplash.com/photo-1604719312566-8912e9227c6a?auto=format&fit=crop&w=200&q=80",
+      "rating": 5,
+      "rating_count": 1,
+      "tags": [
+        "Groceries",
+        "Local Store",
+        "Fast Delivery"
+      ]
+    }
+  ],
+  "products": [
+    {
+      "id": "prod_1788851232983",
+      "shop_id": "shop_1788851176854",
+      "category_id": "c1",
+      "name": "bananna",
+      "description": "",
+      "image_url": "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=300&q=80",
+      "price": 10,
+      "mrp": 15,
+      "unit": "piece",
+      "unit_value": 1,
+      "stock_quantity": 50,
+      "is_available": true,
+      "created_at": "2026-09-08T07:07:12.983Z",
+      "updated_at": "2026-09-08T07:07:12.983Z"
+    },
+    {
+      "id": "prod_1788851220075",
+      "shop_id": "shop_1788851176854",
+      "category_id": "c1",
+      "name": "mango",
+      "description": "",
+      "image_url": "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=300&q=80",
+      "price": 200,
+      "mrp": 250,
+      "unit": "piece",
+      "unit_value": 1,
+      "stock_quantity": 50,
+      "is_available": true,
+      "created_at": "2026-09-08T07:07:00.075Z",
+      "updated_at": "2026-09-08T07:07:00.075Z"
+    },
+    {
+      "id": "prod_1788851204059",
+      "shop_id": "shop_1788851176854",
+      "category_id": "c1",
+      "name": "apple",
+      "description": "",
+      "image_url": "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=300&q=80",
+      "price": 100,
+      "mrp": 150,
+      "unit": "piece",
+      "unit_value": 1,
+      "stock_quantity": 50,
+      "is_available": true,
+      "created_at": "2026-09-08T07:06:44.059Z",
+      "updated_at": "2026-09-08T07:06:44.059Z"
+    }
+  ],
+  "orders": [
+    {
+      "id": "ord_1788854433559",
+      "customer_id": "u_customer_1",
+      "shop_id": "shop_1788851176854",
+      "status": "delivered",
+      "subtotal": 1330,
+      "delivery_fee": 0,
+      "total": 1335,
+      "delivery_address": "Flat 402, Sai Balaji Residency, Road No. 12, Banjara Hills, Hyderabad",
+      "delivery_lat": 17.4142,
+      "delivery_lng": 78.4335,
+      "payment_method": "cod",
+      "payment_status": "paid",
+      "created_at": "2026-09-08T08:00:33.559Z",
+      "updated_at": "2026-09-08T08:18:24.520Z",
+      "items": [
+        {
+          "id": "item_1788854433559_0",
+          "order_id": "",
+          "product_id": "prod_1788851232983",
+          "product_name": "bananna",
+          "product_price": 10,
+          "product_image_url": "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=300&q=80",
+          "quantity": 3,
+          "total": 30
+        },
+        {
+          "id": "item_1788854433559_1",
+          "order_id": "",
+          "product_id": "prod_1788851220075",
+          "product_name": "mango",
+          "product_price": 200,
+          "product_image_url": "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=300&q=80",
+          "quantity": 4,
+          "total": 800
+        },
+        {
+          "id": "item_1788854433559_2",
+          "order_id": "",
+          "product_id": "prod_1788851204059",
+          "product_name": "apple",
+          "product_price": 100,
+          "product_image_url": "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=300&q=80",
+          "quantity": 5,
+          "total": 500
+        }
+      ],
+      "delivery_partner_id": "dp_ravi_kumar",
+      "delivery_partner_name": "Ravi Kumar (Rider)",
+      "delivery_partner_phone": "+91 98480 99887",
+      "picked_up_at": "2026-09-08T08:18:14.033Z",
+      "delivered_at": "2026-09-08T08:18:24.520Z"
+    },
+    {
+      "id": "ord_1788851272577",
+      "customer_id": "u_customer_1",
+      "shop_id": "shop_1788851176854",
+      "status": "delivered",
+      "subtotal": 1210,
+      "delivery_fee": 0,
+      "total": 1215,
+      "delivery_address": "Current Location",
+      "delivery_lat": 12.967162478717166,
+      "delivery_lng": 77.71579106023415,
+      "payment_method": "cod",
+      "payment_status": "paid",
+      "created_at": "2026-09-08T07:07:52.577Z",
+      "updated_at": "2026-09-08T08:18:41.830Z",
+      "items": [
+        {
+          "id": "item_1788851272577_0",
+          "order_id": "",
+          "product_id": "prod_1788851232983",
+          "product_name": "bananna",
+          "product_price": 10,
+          "product_image_url": "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=300&q=80",
+          "quantity": 1,
+          "total": 10
+        },
+        {
+          "id": "item_1788851272577_1",
+          "order_id": "",
+          "product_id": "prod_1788851220075",
+          "product_name": "mango",
+          "product_price": 200,
+          "product_image_url": "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=300&q=80",
+          "quantity": 4,
+          "total": 800
+        },
+        {
+          "id": "item_1788851272577_2",
+          "order_id": "",
+          "product_id": "prod_1788851204059",
+          "product_name": "apple",
+          "product_price": 100,
+          "product_image_url": "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=300&q=80",
+          "quantity": 4,
+          "total": 400
+        }
+      ],
+      "delivery_partner_id": "dp_ravi_kumar",
+      "delivery_partner_name": "Ravi Kumar (Rider)",
+      "delivery_partner_phone": "+91 98480 99887",
+      "picked_up_at": "2026-09-08T08:18:32.892Z",
+      "delivered_at": "2026-09-08T08:18:41.830Z"
+    }
+  ],
+  "lastUpdated": 1788855521834
+}

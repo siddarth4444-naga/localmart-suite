@@ -1,0 +1,55 @@
+services:
+  # 1. Backend Real-Time Sync & Database Server
+  - type: web
+    name: localmart-sync-api
+    runtime: node
+    plan: free
+    region: singapore
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: node sync-server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+  # 2. Customer Storefront Web App
+  - type: web
+    name: localmart-customer
+    runtime: static
+    rootDir: customer
+    buildCommand: npm install && npx expo export --platform web
+    staticPublishPath: dist
+    envVars:
+      - key: EXPO_PUBLIC_SYNC_SERVER_URL
+        fromService:
+          type: web
+          name: localmart-sync-api
+          property: host
+
+  # 3. Shopkeeper Portal Web App
+  - type: web
+    name: localmart-shopkeeper
+    runtime: static
+    rootDir: shopkeeper
+    buildCommand: npm install && npx expo export --platform web
+    staticPublishPath: dist
+    envVars:
+      - key: EXPO_PUBLIC_SYNC_SERVER_URL
+        fromService:
+          type: web
+          name: localmart-sync-api
+          property: host
+
+  # 4. Delivery Partner Web App
+  - type: web
+    name: localmart-delivery
+    runtime: static
+    rootDir: delivery
+    buildCommand: npm install && npx expo export --platform web
+    staticPublishPath: dist
+    envVars:
+      - key: EXPO_PUBLIC_SYNC_SERVER_URL
+        fromService:
+          type: web
+          name: localmart-sync-api
+          property: host
