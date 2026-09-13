@@ -56,3 +56,18 @@ services:
     envVars:
       - key: EXPO_PUBLIC_SYNC_SERVER_URL
         value: https://localmart-sync-api.onrender.com
+
+  # 5. Developer & Admin Console Web App
+  - type: web
+    name: localmart-developer
+    runtime: static
+    rootDir: developer
+    buildCommand: npm install && npx expo export --platform web
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: EXPO_PUBLIC_SYNC_SERVER_URL
+        value: https://localmart-sync-api.onrender.com
