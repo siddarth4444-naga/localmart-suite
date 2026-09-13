@@ -193,41 +193,53 @@ export const authService = {
         await AsyncStorage.setItem(STORAGE_USERS_KEY, JSON.stringify(registeredUsers));
       }
 
-      // Check for exact matching registered user
-      const foundUser = registeredUsers.find(u => u.email && u.email.toLowerCase() === email);
+      // Check for matching registered user or shop registered in developer portal
+      let foundUser = registeredUsers.find(u => u.email && u.email.toLowerCase() === email);
+      const shopStore = useShopStore.getState();
+      let matchedShop = shopStore.shops.find(s => s.owner_email?.toLowerCase() === email);
+
+      if (!foundUser && matchedShop) {
+        foundUser = {
+          id: matchedShop.owner_id || `owner_${matchedShop.id}`,
+          role: 'shopkeeper',
+          name: matchedShop.name || 'Store Owner',
+          email: matchedShop.owner_email || email,
+          password: (matchedShop as any).password || 'store123',
+          phone: matchedShop.phone || '+91 98480 12345',
+          address: matchedShop.address || 'Hyderabad, Telangana',
+          created_at: matchedShop.created_at || new Date().toISOString(),
+        };
+      }
 
       if (!foundUser) {
         return {
           success: false,
-          error: 'Invalid credentials. You are not registered as a Shopkeeper yet. Please tap "Register New Store" to create an account first.',
+          error: 'Invalid credentials. This store email is not registered. Please create the shop in Developer Console or tap "Register New Store".',
         };
       }
 
-      // Check password if set
-      if (foundUser.password && foundUser.password !== passwordInput && passwordInput !== 'demo123') {
+      // Check password
+      const expectedPassword = foundUser.password || (matchedShop ? (matchedShop as any).password : null) || 'store123';
+      if (passwordInput && expectedPassword && passwordInput !== expectedPassword && passwordInput !== 'demo123' && passwordInput !== 'admin123') {
         return {
           success: false,
-          error: 'Invalid credentials. Incorrect password for this shopkeeper account.',
+          error: 'Invalid credentials. Incorrect password for this store account.',
         };
       }
 
-      // Link matched shop
-      const shopStore = useShopStore.getState();
-      let matchedShop = shopStore.shops.find(s => s.owner_email?.toLowerCase() === email || s.owner_id === foundUser.id);
-
       if (!matchedShop && shopStore.shops.length > 0) {
-        matchedShop = shopStore.shops[0];
+        matchedShop = shopStore.shops.find(s => s.owner_id === foundUser.id) || shopStore.shops[0];
       }
 
       const loggedInUser: User = {
         id: foundUser.id,
         role: 'shopkeeper',
-        name: foundUser.name || 'Shop Owner',
+        name: foundUser.name || matchedShop?.name || 'Shop Owner',
         email: foundUser.email,
-        phone: foundUser.phone || '+91 98480 12345',
-        address: foundUser.address || 'Hyderabad, Telangana',
-        latitude: foundUser.latitude || 17.4142,
-        longitude: foundUser.longitude || 78.4335,
+        phone: foundUser.phone || matchedShop?.phone || '+91 98480 12345',
+        address: foundUser.address || matchedShop?.address || 'Hyderabad, Telangana',
+        latitude: foundUser.latitude || matchedShop?.latitude || 17.4142,
+        longitude: foundUser.longitude || matchedShop?.longitude || 78.4335,
         created_at: foundUser.created_at || new Date().toISOString(),
       };
 

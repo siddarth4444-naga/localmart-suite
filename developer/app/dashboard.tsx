@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,8 @@ import {
   Modal,
   ActivityIndicator,
   Linking,
+  Switch,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,6 +21,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useShopStore } from '../src/stores/shopStore';
 import { useAuthStore } from '../src/stores/authStore';
 import { realtimeSync, getSyncServerUrl } from '../src/services/realtimeSync';
+import { Shop, Product, Order } from '../types';
+
+const CITY_PRESETS = [
+  { name: 'Hyderabad (Banjara Hills)', address: 'Road No. 12, Banjara Hills, Hyderabad', lat: 17.4142, lng: 78.4335 },
+  { name: 'Hyderabad (Madhapur / HITEC)', address: 'Cyber Towers, Madhapur, Hyderabad', lat: 17.4483, lng: 78.3915 },
+  { name: 'Bengaluru (Indiranagar)', address: '100 Feet Road, Indiranagar, Bengaluru', lat: 12.9716, lng: 77.5946 },
+  { name: 'Mumbai (Bandra West)', address: 'Linking Road, Bandra West, Mumbai', lat: 19.0596, lng: 72.8295 },
+  { name: 'Delhi NCR (Connaught Place)', address: 'Connaught Place, New Delhi', lat: 28.6304, lng: 77.2177 },
+  { name: 'Chennai (T. Nagar)', address: 'Usman Road, T. Nagar, Chennai', lat: 13.0418, lng: 80.2341 },
+  { name: 'Pune (Koregaon Park)', address: 'North Main Road, Koregaon Park, Pune', lat: 18.5362, lng: 73.8940 },
+];
 
 export default function DeveloperDashboardScreen() {
   const router = useRouter();
@@ -26,10 +39,16 @@ export default function DeveloperDashboardScreen() {
     shops,
     products,
     orders,
+    categories,
     initialize,
     addShop,
+    updateShop,
     deleteShop,
     toggleShopStatus,
+    addProduct,
+    updateProduct,
+    deleteProduct,
+    toggleProductAvailability,
     clearAllShops,
     seedDemoShops,
     updateOrderStatus,
@@ -37,24 +56,60 @@ export default function DeveloperDashboardScreen() {
 
   const { logout } = useAuthStore();
 
-  const [activeTab, setActiveTab] = useState('switcher');
-  const [addShopModalVisible, setAddShopModalVisible] = useState(false);
+  // Active Main Tab: 'shops' | 'products' | 'orders' | 'switcher' | 'rawdb'
+  const [activeTab, setActiveTab] = useState<'shops' | 'products' | 'orders' | 'switcher' | 'rawdb'>('shops');
   const [syncing, setSyncing] = useState(false);
   const [pingStatus, setPingStatus] = useState('online');
   const [serverUrl, setServerUrl] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
 
-  const [newShopName, setNewShopName] = useState('');
-  const [newShopEmail, setNewShopEmail] = useState('');
-  const [newShopPhone, setNewShopPhone] = useState('');
-  const [newShopAddress, setNewShopAddress] = useState('');
-  const [newShopCategory, setNewShopCategory] = useState('Groceries');
+  // Modals
+  const [addShopModalVisible, setAddShopModalVisible] = useState(false);
+  const [editShopModalVisible, setEditShopModalVisible] = useState(false);
+  const [addProductModalVisible, setAddProductModalVisible] = useState(false);
+  const [editProductModalVisible, setEditProductModalVisible] = useState(false);
+
+  // Shop Form States (Add & Edit)
+  const [editingShopId, setEditingShopId] = useState<string | null>(null);
+  const [shopName, setShopName] = useState('');
+  const [shopEmail, setShopEmail] = useState('');
+  const [shopPassword, setShopPassword] = useState('');
+  const [shopPhone, setPhone] = useState('');
+  const [shopAddress, setShopAddress] = useState('');
+  const [shopLat, setShopLat] = useState('17.4142');
+  const [shopLng, setShopLng] = useState('78.4335');
+  const [shopOpenTime, setShopOpenTime] = useState('07:00:00');
+  const [shopCloseTime, setShopCloseTime] = useState('22:00:00');
+  const [shopIs24Hours, setShopIs24Hours] = useState(false);
+  const [shopRadius, setShopRadius] = useState('5');
+  const [shopDeliveryFee, setShopDeliveryFee] = useState('0');
+  const [shopMinOrder, setShopMinOrder] = useState('50');
+  const [shopCategory, setShopCategory] = useState('Groceries');
+  const [shopCoverUrl, setShopCoverUrl] = useState('');
+  const [shopLogoUrl, setShopLogoUrl] = useState('');
+
+  // Product Form States (Add & Edit)
+  const [selectedShopForProduct, setSelectedShopForProduct] = useState<string>('');
+  const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const [prodName, setProdName] = useState('');
+  const [prodCategory, setProdCategory] = useState('c1');
+  const [prodPrice, setProdPrice] = useState('');
+  const [prodMrp, setProdMrp] = useState('');
+  const [prodUnit, setProdUnit] = useState<'kg' | 'g' | 'L' | 'mL' | 'piece' | 'pack'>('kg');
+  const [prodUnitValue, setProdUnitValue] = useState('1');
+  const [prodStock, setProdStock] = useState('50');
+  const [prodImageUrl, setProdImageUrl] = useState('');
+  const [prodIsAvailable, setProdIsAvailable] = useState(true);
+
+  // Filter for products tab
+  const [productShopFilter, setProductShopFilter] = useState<string>('all');
 
   useEffect(() => {
     initialize();
     setServerUrl(getSyncServerUrl());
   }, []);
 
-  const showAlert = (title, msg) => {
+  const showAlert = (title: string, msg: string) => {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       window.alert(`${title}\n${msg}`);
     } else {
@@ -78,74 +133,238 @@ export default function DeveloperDashboardScreen() {
           });
         }
         setPingStatus('online');
-        showAlert('Cloud Sync Complete', `Successfully synced with ${url}`);
+        showAlert('Cloud Sync Complete', `Successfully synced snapshot with ${url}`);
       } else {
         setPingStatus('offline');
         showAlert('Sync Warning', `Server responded with status ${res.status}`);
       }
-    } catch (e) {
+    } catch (e: any) {
       setPingStatus('offline');
-      showAlert('Sync Error', `Could not reach ${getSyncServerUrl()}: ${e.message}`);
+      showAlert('Sync Error', `Could not reach ${getSyncServerUrl()}: ${e?.message}`);
     } finally {
       setSyncing(false);
     }
   };
 
-  const handleCreateShopSubmit = () => {
-    if (!newShopName.trim()) {
-      showAlert('Missing Field', 'Please enter a shop name.');
+  // --- Shop Actions ---
+  const openAddShopModal = () => {
+    setEditingShopId(null);
+    setShopName('');
+    setShopEmail('');
+    setShopPassword('store123');
+    setPhone('+91 98480 12345');
+    setShopAddress('Road No. 12, Banjara Hills, Hyderabad');
+    setShopLat('17.4142');
+    setShopLng('78.4335');
+    setShopOpenTime('07:00:00');
+    setShopCloseTime('22:00:00');
+    setShopIs24Hours(false);
+    setShopRadius('5');
+    setShopDeliveryFee('0');
+    setShopMinOrder('50');
+    setShopCategory('Groceries');
+    setShopCoverUrl('https://images.unsplash.com/photo-1578916171728-46686eac8d58?auto=format&fit=crop&w=600&q=80');
+    setShopLogoUrl('https://images.unsplash.com/photo-1604719312566-8912e9227c6a?auto=format&fit=crop&w=200&q=80');
+    setAddShopModalVisible(true);
+  };
+
+  const openEditShopModal = (shop: Shop) => {
+    setEditingShopId(shop.id);
+    setShopName(shop.name);
+    setShopEmail(shop.owner_email || '');
+    setShopPassword((shop as any).password || 'store123');
+    setPhone(shop.phone || '');
+    setShopAddress(shop.address || '');
+    setShopLat(String(shop.latitude || 17.4142));
+    setShopLng(String(shop.longitude || 78.4335));
+    setShopOpenTime(shop.opening_time || '07:00:00');
+    setShopCloseTime(shop.closing_time || '22:00:00');
+    setShopIs24Hours(!!shop.is_24_hours);
+    setShopRadius(String(shop.delivery_radius_km || 5));
+    setShopDeliveryFee(String(shop.delivery_fee || 0));
+    setShopMinOrder(String(shop.min_order_amount || 50));
+    setShopCategory(shop.tags && shop.tags[0] ? shop.tags[0] : 'Groceries');
+    setShopCoverUrl(shop.cover_image_url || '');
+    setShopLogoUrl(shop.logo_url || '');
+    setEditShopModalVisible(true);
+  };
+
+  const handleSaveAddShop = () => {
+    if (!shopName.trim()) {
+      showAlert('Required', 'Please enter a shop name.');
       return;
     }
+    const cleanEmail = shopEmail.trim().toLowerCase() || `owner_${Date.now()}@localmart.com`;
 
-    const shop = addShop({
-      name: newShopName.trim(),
-      owner_email: newShopEmail.trim() || `${Date.now()}@localmart.com`,
-      phone: newShopPhone.trim() || '9848012345',
-      address: newShopAddress.trim() || 'Road No. 12, Banjara Hills, Hyderabad',
-      tags: [newShopCategory, 'Local Store', 'Fast Delivery'],
-      is_active: true,
+    const newShop = addShop({
+      name: shopName.trim(),
+      owner_email: cleanEmail,
+      phone: shopPhone.trim() || '+91 98480 12345',
+      address: shopAddress.trim() || 'Neighborhood Area, Hyderabad',
+      latitude: parseFloat(shopLat) || 17.4142,
+      longitude: parseFloat(shopLng) || 78.4335,
+      opening_time: shopOpenTime,
+      closing_time: shopCloseTime,
+      is_24_hours: shopIs24Hours,
       isOpen: true,
-      opening_time: '07:00:00',
-      closing_time: '23:00:00',
-      delivery_radius_km: 5,
-      delivery_fee: 0,
-      min_order_amount: 50,
+      is_active: true,
+      delivery_radius_km: parseFloat(shopRadius) || 5,
+      delivery_fee: parseFloat(shopDeliveryFee) || 0,
+      min_order_amount: parseFloat(shopMinOrder) || 50,
+      tags: [shopCategory, 'Local Store', 'Fast Delivery'],
+      cover_image_url: shopCoverUrl || 'https://images.unsplash.com/photo-1578916171728-46686eac8d58?auto=format&fit=crop&w=600&q=80',
+      logo_url: shopLogoUrl || 'https://images.unsplash.com/photo-1604719312566-8912e9227c6a?auto=format&fit=crop&w=200&q=80',
       rating: 5.0,
       rating_count: 1,
+      ...({ password: shopPassword.trim() || 'store123' } as any),
     });
 
     setAddShopModalVisible(false);
-    setNewShopName('');
-    setNewShopEmail('');
-    setNewShopPhone('');
-    setNewShopAddress('');
-    showAlert('Shop Created', `"${shop.name}" has been registered and broadcast across cloud apps!`);
+    showAlert('Shop Registered', `"${newShop.name}" added successfully!\n\n🔑 Shopkeeper Login:\nEmail: ${cleanEmail}\nPassword: ${shopPassword || 'store123'}\n\nVisible on Customer (8081) and Shopkeeper (8082)!`);
   };
 
-  const handleWipeDatabase = () => {
-    const doWipe = () => {
-      clearAllShops();
-      showAlert('Database Wiped', 'Database is now fresh and empty.');
+  const handleSaveEditShop = () => {
+    if (!editingShopId || !shopName.trim()) return;
+
+    updateShop(editingShopId, {
+      name: shopName.trim(),
+      owner_email: shopEmail.trim().toLowerCase(),
+      phone: shopPhone.trim(),
+      address: shopAddress.trim(),
+      latitude: parseFloat(shopLat) || 17.4142,
+      longitude: parseFloat(shopLng) || 78.4335,
+      opening_time: shopOpenTime,
+      closing_time: shopCloseTime,
+      is_24_hours: shopIs24Hours,
+      delivery_radius_km: parseFloat(shopRadius) || 5,
+      delivery_fee: parseFloat(shopDeliveryFee) || 0,
+      min_order_amount: parseFloat(shopMinOrder) || 50,
+      tags: [shopCategory, 'Local Store'],
+      cover_image_url: shopCoverUrl,
+      logo_url: shopLogoUrl,
+      ...({ password: shopPassword.trim() || 'store123' } as any),
+    });
+
+    setEditShopModalVisible(false);
+    showAlert('Updated', `Shop "${shopName}" details updated and broadcast across all portals!`);
+  };
+
+  const handleDeleteShopConfirm = (shopId: string, name: string) => {
+    const doDelete = () => {
+      deleteShop(shopId);
+      showAlert('Deleted', `Shop "${name}" was removed.`);
     };
 
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      if (window.confirm('Wipe Database: Are you sure you want to clear all shops, products, and orders?')) {
-        doWipe();
+      if (window.confirm(`Delete Shop: Are you sure you want to delete "${name}" and all its products?`)) {
+        doDelete();
       }
     } else {
-      Alert.alert('Wipe Database', 'Are you sure you want to clear all shops, products, and orders?', [
+      Alert.alert('Delete Shop', `Are you sure you want to delete "${name}"?`, [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Wipe All', style: 'destructive', onPress: doWipe },
+        { text: 'Delete', style: 'destructive', onPress: doDelete },
       ]);
     }
   };
 
-  const handleSeedDemoData = () => {
-    seedDemoShops();
-    showAlert('Demo Data Seeded', 'Loaded demo shops and products into the ecosystem!');
+  // --- Product Actions ---
+  const openAddProductModal = (targetShopId?: string) => {
+    setEditingProductId(null);
+    setSelectedShopForProduct(targetShopId || (shops[0]?.id || ''));
+    setProdName('');
+    setProdCategory('c1');
+    setProdPrice('40');
+    setProdMrp('50');
+    setProdUnit('kg');
+    setProdUnitValue('1');
+    setProdStock('100');
+    setProdImageUrl('https://images.unsplash.com/photo-1571771894821-ce9b6c11b08e?auto=format&fit=crop&w=400&q=80');
+    setProdIsAvailable(true);
+    setAddProductModalVisible(true);
   };
 
-  const openExternalUrl = (url) => {
+  const openEditProductModal = (product: Product) => {
+    setEditingProductId(product.id);
+    setSelectedShopForProduct(product.shop_id);
+    setProdName(product.name);
+    setProdCategory(product.category_id || 'c1');
+    setProdPrice(String(product.price));
+    setProdMrp(String(product.mrp || product.price));
+    setProdUnit(product.unit || 'kg');
+    setProdUnitValue(String(product.unit_value || 1));
+    setProdStock(String(product.stock_quantity || 50));
+    setProdImageUrl(product.image_url || '');
+    setProdIsAvailable(product.is_available !== false);
+    setEditProductModalVisible(true);
+  };
+
+  const handleSaveAddProduct = () => {
+    if (!prodName.trim() || !selectedShopForProduct) {
+      showAlert('Required', 'Please enter a product name and select a shop.');
+      return;
+    }
+
+    const newProd = addProduct({
+      shop_id: selectedShopForProduct,
+      name: prodName.trim(),
+      category_id: prodCategory,
+      price: parseFloat(prodPrice) || 0,
+      mrp: parseFloat(prodMrp) || parseFloat(prodPrice) || 0,
+      unit: prodUnit,
+      unit_value: parseFloat(prodUnitValue) || 1,
+      stock_quantity: parseInt(prodStock, 10) || 50,
+      image_url: prodImageUrl || 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=400&q=80',
+      is_available: prodIsAvailable,
+    });
+
+    setAddProductModalVisible(false);
+    showAlert('Product Added', `"${newProd.name}" added to shop! Reflected instantly in Customer & Shopkeeper portals.`);
+  };
+
+  const handleSaveEditProduct = () => {
+    if (!editingProductId || !prodName.trim()) return;
+
+    updateProduct(editingProductId, {
+      name: prodName.trim(),
+      category_id: prodCategory,
+      price: parseFloat(prodPrice) || 0,
+      mrp: parseFloat(prodMrp) || 0,
+      unit: prodUnit,
+      unit_value: parseFloat(prodUnitValue) || 1,
+      stock_quantity: parseInt(prodStock, 10) || 0,
+      image_url: prodImageUrl,
+      is_available: prodIsAvailable,
+    });
+
+    setEditProductModalVisible(false);
+    showAlert('Updated', `Product "${prodName}" updated successfully.`);
+  };
+
+  const handleDeleteProductConfirm = (prodId: string, name: string) => {
+    const doDel = () => {
+      deleteProduct(prodId);
+      showAlert('Deleted', `Product "${name}" was removed.`);
+    };
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      if (window.confirm(`Delete Product: Are you sure you want to delete "${name}"?`)) {
+        doDel();
+      }
+    } else {
+      Alert.alert('Delete Product', `Delete "${name}"?`, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: doDel },
+      ]);
+    }
+  };
+
+  const handleApplyPreset = (preset: typeof CITY_PRESETS[0]) => {
+    setShopAddress(preset.address);
+    setShopLat(String(preset.lat));
+    setShopLng(String(preset.lng));
+  };
+
+  const openAppUrl = (url: string) => {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       window.open(url, '_blank');
     } else {
@@ -153,14 +372,14 @@ export default function DeveloperDashboardScreen() {
     }
   };
 
-  const getAppUrls = () => {
+  const appUrls = useMemo(() => {
     const isCloud = typeof window !== 'undefined' && window.location && window.location.hostname.includes('onrender.com');
     if (isCloud) {
       return {
         customer: 'https://localmart-customer.onrender.com',
         shopkeeper: 'https://localmart-shopkeeper.onrender.com',
         delivery: 'https://localmart-delivery.onrender.com',
-        backend: 'https://localmart-sync-api.onrender.com',
+        backend: 'https://localmart-sync-api.onrender.com/api/sync',
       };
     }
     const host = typeof window !== 'undefined' && window.location ? window.location.hostname : 'localhost';
@@ -168,25 +387,50 @@ export default function DeveloperDashboardScreen() {
       customer: `http://${host}:8081`,
       shopkeeper: `http://${host}:8082`,
       delivery: `http://${host}:8083`,
-      backend: `http://${host}:5000`,
+      backend: `http://${host}:5000/api/sync`,
     };
-  };
+  }, []);
 
-  const appUrls = getAppUrls();
+  const filteredShops = useMemo(() => {
+    if (!searchQuery.trim()) return shops;
+    const q = searchQuery.toLowerCase();
+    return shops.filter(s =>
+      s.name.toLowerCase().includes(q) ||
+      s.address?.toLowerCase().includes(q) ||
+      s.owner_email?.toLowerCase().includes(q)
+    );
+  }, [shops, searchQuery]);
+
+  const filteredProducts = useMemo(() => {
+    let list = products;
+    if (productShopFilter !== 'all') {
+      list = list.filter(p => p.shop_id === productShopFilter);
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(p => p.name.toLowerCase().includes(q));
+    }
+    return list;
+  }, [products, productShopFilter, searchQuery]);
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Top Header Bar */}
+      {/* Top Mission Control Bar */}
       <View style={styles.topBar}>
         <View style={styles.topLeft}>
           <View style={styles.logoBadge}>
             <Ionicons name="terminal" size={20} color="#10B981" />
           </View>
           <View>
-            <Text style={styles.appTitle}>LocalMart Developer Console</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={styles.appTitle}>LocalMart Developer Console</Text>
+              <View style={styles.adminPill}>
+                <Text style={styles.adminPillText}>ADMIN</Text>
+              </View>
+            </View>
             <View style={styles.syncStatusRow}>
               <View style={[styles.statusDot, { backgroundColor: pingStatus === 'online' ? '#10B981' : '#EF4444' }]} />
-              <Text style={styles.serverText}>{serverUrl}</Text>
+              <Text style={styles.serverText}>Sync Engine: {serverUrl}</Text>
             </View>
           </View>
         </View>
@@ -215,23 +459,41 @@ export default function DeveloperDashboardScreen() {
         </View>
       </View>
 
-      {/* Navigation Tabs */}
-      <View style={styles.tabBar}>
-        <TouchableOpacity
-          style={[styles.tabItem, activeTab === 'switcher' && styles.tabItemActive]}
-          onPress={() => setActiveTab('switcher')}
-        >
-          <Ionicons name="apps" size={16} color={activeTab === 'switcher' ? '#10B981' : '#94A3B8'} />
-          <Text style={[styles.tabText, activeTab === 'switcher' && styles.tabTextActive]}>App Switcher</Text>
-        </TouchableOpacity>
+      {/* Quick Launch Switcher Banner */}
+      <View style={styles.quickLaunchBanner}>
+        <Text style={styles.quickLaunchLabel}>⚡ 1-CLICK APP SWITCHER (CROSS-TESTING):</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickLaunchRow}>
+          <TouchableOpacity style={[styles.appBtn, { backgroundColor: '#2563EB' }]} onPress={() => openAppUrl(appUrls.customer)}>
+            <Ionicons name="cart" size={16} color="#FFFFFF" />
+            <Text style={styles.appBtnText}>🛒 Open Customer (8081)</Text>
+          </TouchableOpacity>
 
+          <TouchableOpacity style={[styles.appBtn, { backgroundColor: '#D97706' }]} onPress={() => openAppUrl(appUrls.shopkeeper)}>
+            <Ionicons name="storefront" size={16} color="#FFFFFF" />
+            <Text style={styles.appBtnText}>🏪 Open Shopkeeper (8082)</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={[styles.appBtn, { backgroundColor: '#7C3AED' }]} onPress={() => openAppUrl(appUrls.delivery)}>
+            <Ionicons name="bicycle" size={16} color="#FFFFFF" />
+            <Text style={styles.appBtnText}>🛵 Open Delivery (8083)</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={[styles.appBtn, { backgroundColor: '#059669' }]} onPress={() => openAppUrl(appUrls.backend)}>
+            <Ionicons name="server" size={16} color="#FFFFFF" />
+            <Text style={styles.appBtnText}>⚡ Sync DB JSON (5000)</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+
+      {/* Main Tab Bar */}
+      <View style={styles.tabBar}>
         <TouchableOpacity
           style={[styles.tabItem, activeTab === 'shops' && styles.tabItemActive]}
           onPress={() => setActiveTab('shops')}
         >
           <Ionicons name="storefront" size={16} color={activeTab === 'shops' ? '#10B981' : '#94A3B8'} />
           <Text style={[styles.tabText, activeTab === 'shops' && styles.tabTextActive]}>
-            Shops ({shops.length})
+            🏬 Shops ({shops.length})
           </Text>
         </TouchableOpacity>
 
@@ -241,7 +503,7 @@ export default function DeveloperDashboardScreen() {
         >
           <Ionicons name="cube" size={16} color={activeTab === 'products' ? '#10B981' : '#94A3B8'} />
           <Text style={[styles.tabText, activeTab === 'products' && styles.tabTextActive]}>
-            Products ({products.length})
+            📦 Products ({products.length})
           </Text>
         </TouchableOpacity>
 
@@ -251,299 +513,151 @@ export default function DeveloperDashboardScreen() {
         >
           <Ionicons name="receipt" size={16} color={activeTab === 'orders' ? '#10B981' : '#94A3B8'} />
           <Text style={[styles.tabText, activeTab === 'orders' && styles.tabTextActive]}>
-            Orders ({orders.length})
+            📋 Orders ({orders.length})
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.tabItem, activeTab === 'json' && styles.tabItemActive]}
-          onPress={() => setActiveTab('json')}
+          style={[styles.tabItem, activeTab === 'rawdb' && styles.tabItemActive]}
+          onPress={() => setActiveTab('rawdb')}
         >
-          <Ionicons name="code-slash" size={16} color={activeTab === 'json' ? '#10B981' : '#94A3B8'} />
-          <Text style={[styles.tabText, activeTab === 'json' && styles.tabTextActive]}>JSON DB</Text>
+          <Ionicons name="code-slash" size={16} color={activeTab === 'rawdb' ? '#10B981' : '#94A3B8'} />
+          <Text style={[styles.tabText, activeTab === 'rawdb' && styles.tabTextActive]}>
+            🔍 Raw DB
+          </Text>
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* ================= APP SWITCHER TAB ================= */}
-        {activeTab === 'switcher' && (
-          <View>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Multi-App Ecosystem Switcher</Text>
-              <Text style={styles.sectionSubtitle}>
-                Switch between Customer, Shopkeeper, and Delivery apps to verify real-time data sync.
-              </Text>
-            </View>
-
-            <View style={styles.gridContainer}>
-              {/* 1. Customer Storefront Switcher Card */}
-              <View style={styles.appCard}>
-                <View style={[styles.appCardHeader, { backgroundColor: 'rgba(16, 185, 129, 0.1)' }]}>
-                  <View style={styles.appCardIconBg}>
-                    <Ionicons name="cart" size={28} color="#10B981" />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.appCardTitle}>Customer Storefront</Text>
-                    <Text style={styles.appCardBadge}>Blinkit / Zepto UI • Shopper</Text>
-                  </View>
-                </View>
-                <View style={styles.appCardBody}>
-                  <Text style={styles.appCardDesc}>
-                    View available shops, browse grocery aisles, add items to cart, and place live Cash-on-Delivery orders.
-                  </Text>
-                  <View style={styles.urlBox}>
-                    <Ionicons name="link-outline" size={14} color="#64748B" />
-                    <Text style={styles.urlText} numberOfLines={1}>{appUrls.customer}</Text>
-                  </View>
-                  <TouchableOpacity
-                    style={[styles.launchBtn, { backgroundColor: '#10B981' }]}
-                    onPress={() => openExternalUrl(appUrls.customer)}
-                  >
-                    <Ionicons name="open-outline" size={18} color="#0F172A" />
-                    <Text style={styles.launchBtnText}>Open Customer App</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {/* 2. Shopkeeper Portal Switcher Card */}
-              <View style={styles.appCard}>
-                <View style={[styles.appCardHeader, { backgroundColor: 'rgba(245, 158, 11, 0.1)' }]}>
-                  <View style={[styles.appCardIconBg, { backgroundColor: 'rgba(245, 158, 11, 0.2)' }]}>
-                    <Ionicons name="storefront" size={28} color="#F59E0B" />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.appCardTitle}>Shopkeeper Merchant</Text>
-                    <Text style={[styles.appCardBadge, { color: '#F59E0B' }]}>Store Owner Portal</Text>
-                  </View>
-                </View>
-                <View style={styles.appCardBody}>
-                  <Text style={styles.appCardDesc}>
-                    Manage products, add inventory, update pricing, accept customer orders, and mark orders ready.
-                  </Text>
-                  <View style={styles.urlBox}>
-                    <Ionicons name="link-outline" size={14} color="#64748B" />
-                    <Text style={styles.urlText} numberOfLines={1}>{appUrls.shopkeeper}</Text>
-                  </View>
-                  <TouchableOpacity
-                    style={[styles.launchBtn, { backgroundColor: '#F59E0B' }]}
-                    onPress={() => openExternalUrl(appUrls.shopkeeper)}
-                  >
-                    <Ionicons name="open-outline" size={18} color="#0F172A" />
-                    <Text style={styles.launchBtnText}>Open Shopkeeper App</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {/* 3. Delivery Partner Switcher Card */}
-              <View style={styles.appCard}>
-                <View style={[styles.appCardHeader, { backgroundColor: 'rgba(56, 189, 248, 0.1)' }]}>
-                  <View style={[styles.appCardIconBg, { backgroundColor: 'rgba(56, 189, 248, 0.2)' }]}>
-                    <Ionicons name="bicycle" size={28} color="#38BDF8" />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.appCardTitle}>Delivery Partner</Text>
-                    <Text style={[styles.appCardBadge, { color: '#38BDF8' }]}>Rider Fleet & UPI QR</Text>
-                  </View>
-                </View>
-                <View style={styles.appCardBody}>
-                  <Text style={styles.appCardDesc}>
-                    Claim delivery tasks, navigate to pickup store, deliver to customer doorstep, and collect UPI payments.
-                  </Text>
-                  <View style={styles.urlBox}>
-                    <Ionicons name="link-outline" size={14} color="#64748B" />
-                    <Text style={styles.urlText} numberOfLines={1}>{appUrls.delivery}</Text>
-                  </View>
-                  <TouchableOpacity
-                    style={[styles.launchBtn, { backgroundColor: '#38BDF8' }]}
-                    onPress={() => openExternalUrl(appUrls.delivery)}
-                  >
-                    <Ionicons name="open-outline" size={18} color="#0F172A" />
-                    <Text style={styles.launchBtnText}>Open Delivery App</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-
-            {/* Ecosystem Action Toolbar */}
-            <View style={styles.actionCard}>
-              <Text style={styles.actionCardTitle}>⚡ Quick Admin Actions</Text>
-              <View style={styles.actionButtonRow}>
-                <TouchableOpacity
-                  style={[styles.actionBtn, { backgroundColor: '#10B981' }]}
-                  onPress={() => setAddShopModalVisible(true)}
-                >
-                  <Ionicons name="add-circle" size={18} color="#0F172A" />
-                  <Text style={styles.actionBtnText}>Add New Store</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.actionBtn, { backgroundColor: '#334155' }]}
-                  onPress={handleSeedDemoData}
-                >
-                  <Ionicons name="sparkles" size={18} color="#38BDF8" />
-                  <Text style={[styles.actionBtnText, { color: '#F8FAFC' }]}>Seed Demo Data</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.actionBtn, { backgroundColor: 'rgba(239, 68, 68, 0.15)', borderWidth: 1, borderColor: '#EF4444' }]}
-                  onPress={handleWipeDatabase}
-                >
-                  <Ionicons name="trash-outline" size={18} color="#EF4444" />
-                  <Text style={[styles.actionBtnText, { color: '#EF4444' }]}>Wipe Database</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        )}
-
-        {/* ================= SHOPS TAB ================= */}
+      {/* TAB CONTENT */}
+      <ScrollView style={styles.mainScroll} contentContainerStyle={styles.scrollContent}>
+        {/* TAB 1: SHOPS MANAGER */}
         {activeTab === 'shops' && (
           <View>
             <View style={styles.sectionHeaderRow}>
               <View>
-                <Text style={styles.sectionTitle}>Registered Shops ({shops.length})</Text>
-                <Text style={styles.sectionSubtitle}>All stores registered in the shared cloud database.</Text>
+                <Text style={styles.sectionTitle}>Global Stores & Kirana Registry</Text>
+                <Text style={styles.sectionSubtitle}>
+                  Add, edit, change timings/email/address, or delete shops. Changes sync immediately.
+                </Text>
               </View>
-              <TouchableOpacity
-                style={styles.smallAddBtn}
-                onPress={() => setAddShopModalVisible(true)}
-              >
-                <Ionicons name="add" size={18} color="#0F172A" />
-                <Text style={styles.smallAddBtnText}>Add Store</Text>
+              <TouchableOpacity style={styles.primaryActionBtn} onPress={openAddShopModal}>
+                <Ionicons name="add-circle" size={18} color="#FFFFFF" />
+                <Text style={styles.primaryActionBtnText}>+ Register New Shop</Text>
               </TouchableOpacity>
             </View>
 
-            {shops.length === 0 ? (
+            {/* Search Input */}
+            <View style={styles.searchBar}>
+              <Ionicons name="search" size={18} color="#64748B" />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search shops by name, address, or email..."
+                placeholderTextColor="#64748B"
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchQuery('')}>
+                  <Ionicons name="close-circle" size={18} color="#64748B" />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {filteredShops.length === 0 ? (
               <View style={styles.emptyCard}>
-                <Ionicons name="storefront-outline" size={48} color="#475569" />
-                <Text style={styles.emptyTitle}>No shops registered yet</Text>
-                <Text style={styles.emptySubtitle}>Add your first store or seed demo data.</Text>
+                <Ionicons name="storefront-outline" size={48} color="#64748B" />
+                <Text style={styles.emptyTitle}>No Shops Found</Text>
+                <Text style={styles.emptySub}>Click "+ Register New Shop" or Seed Demo Data.</Text>
+                <TouchableOpacity style={styles.seedBtn} onPress={seedDemoShops}>
+                  <Text style={styles.seedBtnText}>🌱 Seed Demo Stores</Text>
+                </TouchableOpacity>
               </View>
             ) : (
-              shops.map((shop) => (
-                <View key={shop.id} style={styles.itemRow}>
-                  <View style={styles.itemInfo}>
-                    <View style={styles.itemHeaderRow}>
-                      <Text style={styles.itemName}>{shop.name}</Text>
-                      <View style={[styles.statusBadge, { backgroundColor: shop.is_active ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)' }]}>
-                        <Text style={[styles.statusBadgeText, { color: shop.is_active ? '#10B981' : '#EF4444' }]}>
-                          {shop.is_active ? 'ACTIVE' : 'INACTIVE'}
+              filteredShops.map(shop => {
+                const shopProds = products.filter(p => p.shop_id === shop.id);
+                return (
+                  <View key={shop.id} style={styles.shopCard}>
+                    <View style={styles.shopCardTop}>
+                      <Image
+                        source={{ uri: shop.logo_url || 'https://images.unsplash.com/photo-1604719312566-8912e9227c6a?auto=format&fit=crop&w=200&q=80' }}
+                        style={styles.shopLogo}
+                      />
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <Text style={styles.shopNameText}>{shop.name}</Text>
+                          <View style={[styles.statusBadge, { backgroundColor: shop.is_active ? '#05966920' : '#EF444420' }]}>
+                            <Text style={[styles.statusBadgeText, { color: shop.is_active ? '#10B981' : '#EF4444' }]}>
+                              {shop.is_active ? '● Active' : '● Inactive'}
+                            </Text>
+                          </View>
+                        </View>
+                        <Text style={styles.shopAddressText}>📍 {shop.address || 'Address not specified'}</Text>
+                        <Text style={styles.shopMetaText}>
+                          ✉️ Login: <Text style={{ color: '#60A5FA', fontWeight: 'bold' }}>{shop.owner_email || 'No email'}</Text> | 🔑 Pwd: {(shop as any).password || 'store123'}
                         </Text>
                       </View>
                     </View>
-                    <Text style={styles.itemMeta}>Owner: {shop.owner_email || 'No email'}</Text>
-                    <Text style={styles.itemMeta}>Address: {shop.address}</Text>
-                    <Text style={styles.itemMeta}>
-                      Coords: ({shop.latitude ? shop.latitude.toFixed(4) : '0'}, {shop.longitude ? shop.longitude.toFixed(4) : '0'}) • Delivery Fee: ₹{shop.delivery_fee}
-                    </Text>
-                  </View>
-                  <View style={styles.itemActions}>
-                    <TouchableOpacity
-                      style={styles.iconBtn}
-                      onPress={() => toggleShopStatus(shop.id)}
-                    >
-                      <Ionicons
-                        name={shop.is_active ? 'eye-outline' : 'eye-off-outline'}
-                        size={20}
-                        color={shop.is_active ? '#10B981' : '#94A3B8'}
-                      />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.iconBtn, { backgroundColor: 'rgba(239, 68, 68, 0.1)' }]}
-                      onPress={() => {
-                        if (Platform.OS === 'web' && typeof window !== 'undefined') {
-                          if (window.confirm(`Delete shop "${shop.name}"?`)) deleteShop(shop.id);
-                        } else {
-                          deleteShop(shop.id);
-                        }
-                      }}
-                    >
-                      <Ionicons name="trash-outline" size={20} color="#EF4444" />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ))
-            )}
-          </View>
-        )}
 
-        {/* ================= PRODUCTS TAB ================= */}
-        {activeTab === 'products' && (
-          <View>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Products Catalog ({products.length})</Text>
-              <Text style={styles.sectionSubtitle}>All catalog inventory items across all stores.</Text>
-            </View>
-
-            {products.length === 0 ? (
-              <View style={styles.emptyCard}>
-                <Ionicons name="cube-outline" size={48} color="#475569" />
-                <Text style={styles.emptyTitle}>No products found</Text>
-                <Text style={styles.emptySubtitle}>Products will appear here when added by store owners.</Text>
-              </View>
-            ) : (
-              products.map((product) => {
-                const shop = shops.find((s) => s.id === product.shop_id);
-                return (
-                  <View key={product.id} style={styles.itemRow}>
-                    <View style={styles.itemInfo}>
-                      <Text style={styles.itemName}>{product.name}</Text>
-                      <Text style={styles.itemMeta}>
-                        Store: <Text style={{ color: '#F59E0B' }}>{shop ? shop.name : product.shop_id}</Text>
-                      </Text>
-                      <Text style={styles.itemMeta}>
-                        Price: ₹{product.price} (MRP: ₹{product.mrp || product.price}) • Stock: {product.stock_quantity ?? 'In Stock'}
-                      </Text>
-                    </View>
-                  </View>
-                );
-              })
-            )}
-          </View>
-        )}
-
-        {/* ================= ORDERS TAB ================= */}
-        {activeTab === 'orders' && (
-          <View>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Ecosystem Orders ({orders.length})</Text>
-              <Text style={styles.sectionSubtitle}>Real-time order statuses and customer deliveries.</Text>
-            </View>
-
-            {orders.length === 0 ? (
-              <View style={styles.emptyCard}>
-                <Ionicons name="receipt-outline" size={48} color="#475569" />
-                <Text style={styles.emptyTitle}>No orders placed yet</Text>
-                <Text style={styles.emptySubtitle}>Place an order from the Customer App to view it live here.</Text>
-              </View>
-            ) : (
-              orders.map((order) => {
-                const shop = shops.find((s) => s.id === order.shop_id);
-                return (
-                  <View key={order.id} style={styles.itemRow}>
-                    <View style={styles.itemInfo}>
-                      <View style={styles.itemHeaderRow}>
-                        <Text style={styles.itemName}>Order #{order.id.slice(-6)}</Text>
-                        <View style={[styles.statusBadge, { backgroundColor: 'rgba(56, 189, 248, 0.15)' }]}>
-                          <Text style={[styles.statusBadgeText, { color: '#38BDF8' }]}>
-                            {order.status.toUpperCase()}
-                          </Text>
-                        </View>
+                    {/* Meta Info Grid */}
+                    <View style={styles.metaGrid}>
+                      <View style={styles.metaBox}>
+                        <Text style={styles.metaBoxLabel}>Operating Hours</Text>
+                        <Text style={styles.metaBoxVal}>
+                          {shop.is_24_hours ? '🟢 24 Hours Open' : `⏰ ${shop.opening_time || '07:00'} - ${shop.closing_time || '22:00'}`}
+                        </Text>
                       </View>
-                      <Text style={styles.itemMeta}>
-                        Store: {shop?.name || order.shop_id} • Total: ₹{order.total}
-                      </Text>
-                      <Text style={styles.itemMeta}>Address: {order.delivery_address}</Text>
-                      <Text style={styles.itemMeta}>
-                        Items: {order.items?.map((i) => `${i.product_name} (x${i.quantity})`).join(', ')}
-                      </Text>
+                      <View style={styles.metaBox}>
+                        <Text style={styles.metaBoxLabel}>Coordinates (GPS)</Text>
+                        <Text style={styles.metaBoxVal}>
+                          🌐 {shop.latitude?.toFixed(4)}, {shop.longitude?.toFixed(4)}
+                        </Text>
+                      </View>
+                      <View style={styles.metaBox}>
+                        <Text style={styles.metaBoxLabel}>Delivery / Min Order</Text>
+                        <Text style={styles.metaBoxVal}>
+                          🚚 ₹{shop.delivery_fee} fee | Min ₹{shop.min_order_amount} | {shop.delivery_radius_km}km
+                        </Text>
+                      </View>
+                      <View style={styles.metaBox}>
+                        <Text style={styles.metaBoxLabel}>Products Catalog</Text>
+                        <Text style={styles.metaBoxVal}>
+                          📦 {shopProds.length} Products listed
+                        </Text>
+                      </View>
                     </View>
-                    <View style={styles.itemActions}>
+
+                    {/* Action Buttons Row */}
+                    <View style={styles.shopActionRow}>
                       <TouchableOpacity
-                        style={[styles.smallStatusBtn, { backgroundColor: '#10B981' }]}
-                        onPress={() => updateOrderStatus(order.id, 'delivered')}
+                        style={styles.editBtn}
+                        onPress={() => openEditShopModal(shop)}
                       >
-                        <Text style={styles.smallStatusBtnText}>Delivered</Text>
+                        <Ionicons name="create-outline" size={16} color="#3B82F6" />
+                        <Text style={styles.editBtnText}>✏️ Edit Shop</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.addProdToShopBtn}
+                        onPress={() => openAddProductModal(shop.id)}
+                      >
+                        <Ionicons name="add" size={16} color="#10B981" />
+                        <Text style={styles.addProdToShopBtnText}>+ Add Item</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.toggleBtn}
+                        onPress={() => toggleShopStatus(shop.id)}
+                      >
+                        <Ionicons name={shop.is_active ? 'eye-off-outline' : 'eye-outline'} size={16} color="#F59E0B" />
+                        <Text style={styles.toggleBtnText}>{shop.is_active ? 'Disable' : 'Enable'}</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.deleteBtn}
+                        onPress={() => handleDeleteShopConfirm(shop.id, shop.name)}
+                      >
+                        <Ionicons name="trash-outline" size={16} color="#EF4444" />
+                        <Text style={styles.deleteBtnText}>Delete</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -553,84 +667,521 @@ export default function DeveloperDashboardScreen() {
           </View>
         )}
 
-        {/* ================= RAW JSON TAB ================= */}
-        {activeTab === 'json' && (
+        {/* TAB 2: PRODUCTS MANAGER */}
+        {activeTab === 'products' && (
           <View>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Raw Database JSON</Text>
-              <Text style={styles.sectionSubtitle}>Current state mirrored from {serverUrl}</Text>
+            <View style={styles.sectionHeaderRow}>
+              <View>
+                <Text style={styles.sectionTitle}>Global Products & Inventory</Text>
+                <Text style={styles.sectionSubtitle}>
+                  Add items to any shop, edit pricing, MRP, units, or stock quantities.
+                </Text>
+              </View>
+              <TouchableOpacity style={styles.primaryActionBtn} onPress={() => openAddProductModal()}>
+                <Ionicons name="add-circle" size={18} color="#FFFFFF" />
+                <Text style={styles.primaryActionBtnText}>+ Add New Product</Text>
+              </TouchableOpacity>
             </View>
+
+            {/* Shop Filter Selector */}
+            <View style={styles.filterRow}>
+              <Text style={styles.filterRowLabel}>Filter By Store:</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                <TouchableOpacity
+                  style={[styles.filterChip, productShopFilter === 'all' && styles.filterChipActive]}
+                  onPress={() => setProductShopFilter('all')}
+                >
+                  <Text style={[styles.filterChipText, productShopFilter === 'all' && styles.filterChipTextActive]}>
+                    All Stores ({products.length})
+                  </Text>
+                </TouchableOpacity>
+                {shops.map(s => {
+                  const count = products.filter(p => p.shop_id === s.id).length;
+                  return (
+                    <TouchableOpacity
+                      key={s.id}
+                      style={[styles.filterChip, productShopFilter === s.id && styles.filterChipActive]}
+                      onPress={() => setProductShopFilter(s.id)}
+                    >
+                      <Text style={[styles.filterChipText, productShopFilter === s.id && styles.filterChipTextActive]}>
+                        {s.name} ({count})
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+
+            {/* Search Input */}
+            <View style={styles.searchBar}>
+              <Ionicons name="search" size={18} color="#64748B" />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search products by title..."
+                placeholderTextColor="#64748B"
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+              />
+            </View>
+
+            {filteredProducts.length === 0 ? (
+              <View style={styles.emptyCard}>
+                <Ionicons name="cube-outline" size={48} color="#64748B" />
+                <Text style={styles.emptyTitle}>No Products Found</Text>
+                <Text style={styles.emptySub}>Click "+ Add New Product" to list groceries in a shop.</Text>
+              </View>
+            ) : (
+              filteredProducts.map(prod => {
+                const shop = shops.find(s => s.id === prod.shop_id);
+                return (
+                  <View key={prod.id} style={styles.prodCard}>
+                    <Image
+                      source={{ uri: prod.image_url || 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=200&q=80' }}
+                      style={styles.prodImage}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.prodNameText}>{prod.name}</Text>
+                      <Text style={styles.prodShopText}>🏬 Store: {shop?.name || 'Unknown Store'}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4 }}>
+                        <Text style={styles.prodPriceText}>₹{prod.price}</Text>
+                        {prod.mrp > prod.price && (
+                          <Text style={styles.prodMrpText}>₹{prod.mrp}</Text>
+                        )}
+                        <Text style={styles.prodUnitText}>({prod.unit_value} {prod.unit})</Text>
+                        <Text style={styles.prodStockText}>Stock: {prod.stock_quantity}</Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.prodActionCol}>
+                      <TouchableOpacity
+                        style={styles.prodEditBtn}
+                        onPress={() => openEditProductModal(prod)}
+                      >
+                        <Ionicons name="create-outline" size={16} color="#3B82F6" />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.prodAvailBtn}
+                        onPress={() => toggleProductAvailability(prod.id)}
+                      >
+                        <Ionicons name={prod.is_available ? 'checkmark-circle' : 'close-circle'} size={18} color={prod.is_available ? '#10B981' : '#EF4444'} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.prodDeleteBtn}
+                        onPress={() => handleDeleteProductConfirm(prod.id, prod.name)}
+                      >
+                        <Ionicons name="trash-outline" size={16} color="#EF4444" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                );
+              })
+            )}
+          </View>
+        )}
+
+        {/* TAB 3: ORDERS INSPECTOR */}
+        {activeTab === 'orders' && (
+          <View>
+            <View style={styles.sectionHeaderRow}>
+              <View>
+                <Text style={styles.sectionTitle}>Global Orders Stream</Text>
+                <Text style={styles.sectionSubtitle}>
+                  Monitor customer orders across all stores.
+                </Text>
+              </View>
+            </View>
+
+            {orders.length === 0 ? (
+              <View style={styles.emptyCard}>
+                <Ionicons name="receipt-outline" size={48} color="#64748B" />
+                <Text style={styles.emptyTitle}>No Orders Placed Yet</Text>
+                <Text style={styles.emptySub}>Open Customer App (8081) to place a test order!</Text>
+                <TouchableOpacity style={styles.seedBtn} onPress={() => openAppUrl(appUrls.customer)}>
+                  <Text style={styles.seedBtnText}>🛒 Launch Customer App</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              orders.map(order => {
+                const shop = shops.find(s => s.id === order.shop_id);
+                return (
+                  <View key={order.id} style={styles.orderCard}>
+                    <View style={styles.orderCardTop}>
+                      <View>
+                        <Text style={styles.orderIdText}>Order #{order.id.slice(-6).toUpperCase()}</Text>
+                        <Text style={styles.orderStoreText}>🏬 {shop?.name || 'LocalMart Store'}</Text>
+                      </View>
+                      <View style={[styles.orderStatusPill, { backgroundColor: getStatusColor(order.status) + '20' }]}>
+                        <Text style={[styles.orderStatusText, { color: getStatusColor(order.status) }]}>
+                          {order.status.toUpperCase()}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <Text style={styles.orderAddressText}>📍 Drop: {order.delivery_address || 'Customer Address'}</Text>
+                    <Text style={styles.orderItemsText}>
+                      Items: {order.items?.map(i => `${i.product_name} x${i.quantity}`).join(', ') || 'Grocery items'}
+                    </Text>
+                    <View style={styles.orderBottomRow}>
+                      <Text style={styles.orderTotalText}>Total: ₹{order.total} ({order.payment_method?.toUpperCase() || 'COD'})</Text>
+                      <View style={{ flexDirection: 'row', gap: 6 }}>
+                        <TouchableOpacity
+                          style={[styles.statusMiniBtn, { backgroundColor: '#3B82F6' }]}
+                          onPress={() => updateOrderStatus(order.id, 'accepted')}
+                        >
+                          <Text style={styles.statusMiniBtnText}>Accept</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.statusMiniBtn, { backgroundColor: '#8B5CF6' }]}
+                          onPress={() => updateOrderStatus(order.id, 'ready')}
+                        >
+                          <Text style={styles.statusMiniBtnText}>Ready</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[styles.statusMiniBtn, { backgroundColor: '#10B981' }]}
+                          onPress={() => updateOrderStatus(order.id, 'delivered')}
+                        >
+                          <Text style={styles.statusMiniBtnText}>Deliver</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })
+            )}
+          </View>
+        )}
+
+        {/* TAB 4: RAW DB INSPECTOR */}
+        {activeTab === 'rawdb' && (
+          <View>
+            <View style={styles.sectionHeaderRow}>
+              <View>
+                <Text style={styles.sectionTitle}>Real-Time Shared Database JSON</Text>
+                <Text style={styles.sectionSubtitle}>
+                  Live snapshot synchronized between localhost:5000 and Render cloud.
+                </Text>
+              </View>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity style={styles.seedBtn} onPress={seedDemoShops}>
+                  <Text style={styles.seedBtnText}>🌱 Reset Demo Data</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.wipeBtn} onPress={() => {
+                  if (confirm('Wipe all data?')) clearAllShops();
+                }}>
+                  <Text style={styles.wipeBtnText}>🗑️ Wipe DB</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
             <View style={styles.jsonBox}>
               <Text style={styles.jsonText}>
-                {JSON.stringify({ shops, products, orders, count: { shops: shops.length, products: products.length, orders: orders.length } }, null, 2)}
+                {JSON.stringify({ shops, products, orders }, null, 2)}
               </Text>
             </View>
           </View>
         )}
       </ScrollView>
 
-      {/* ================= ADD SHOP MODAL ================= */}
+      {/* MODAL 1: ADD NEW SHOP */}
       <Modal visible={addShopModalVisible} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
+          <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add New Store to Cloud</Text>
+              <Text style={styles.modalTitle}>🏬 Register New Store in LocalMart</Text>
               <TouchableOpacity onPress={() => setAddShopModalVisible(false)}>
                 <Ionicons name="close" size={24} color="#94A3B8" />
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Shop Name *</Text>
-                <TextInput
-                  style={styles.modalInput}
-                  placeholder="e.g. Sri Balaji Supermarket"
-                  placeholderTextColor="#64748B"
-                  value={newShopName}
-                  onChangeText={setNewShopName}
-                />
+            <ScrollView style={{ maxHeight: 500 }} showsVerticalScrollIndicator={false}>
+              <Text style={styles.fieldLabel}>Shop Name *</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="e.g. Sri Krishna Supermarket"
+                placeholderTextColor="#64748B"
+                value={shopName}
+                onChangeText={setShopName}
+              />
+
+              <View style={styles.twoCol}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>Owner Login Email *</Text>
+                  <TextInput
+                    style={styles.modalInput}
+                    placeholder="e.g. krishna@localmart.com"
+                    placeholderTextColor="#64748B"
+                    value={shopEmail}
+                    onChangeText={setShopEmail}
+                    autoCapitalize="none"
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>Owner Password *</Text>
+                  <TextInput
+                    style={styles.modalInput}
+                    placeholder="e.g. store123"
+                    placeholderTextColor="#64748B"
+                    value={shopPassword}
+                    onChangeText={setShopPassword}
+                  />
+                </View>
               </View>
 
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Owner Email</Text>
-                <TextInput
-                  style={styles.modalInput}
-                  placeholder="owner@example.com"
-                  placeholderTextColor="#64748B"
-                  value={newShopEmail}
-                  onChangeText={setNewShopEmail}
-                  autoCapitalize="none"
-                />
+              <Text style={styles.fieldLabel}>Contact Phone Number</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="e.g. +91 98480 12345"
+                placeholderTextColor="#64748B"
+                value={shopPhone}
+                onChangeText={setPhone}
+              />
+
+              {/* City Presets */}
+              <Text style={styles.fieldLabel}>📍 Quick City / Location Preset:</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, marginBottom: 10 }}>
+                {CITY_PRESETS.map(p => (
+                  <TouchableOpacity key={p.name} style={styles.presetChip} onPress={() => handleApplyPreset(p)}>
+                    <Text style={styles.presetChipText}>{p.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              <Text style={styles.fieldLabel}>Street Address</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="e.g. Road No. 12, Banjara Hills, Hyderabad"
+                placeholderTextColor="#64748B"
+                value={shopAddress}
+                onChangeText={setShopAddress}
+              />
+
+              <View style={styles.twoCol}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>Latitude</Text>
+                  <TextInput style={styles.modalInput} value={shopLat} onChangeText={setShopLat} keyboardType="numeric" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>Longitude</Text>
+                  <TextInput style={styles.modalInput} value={shopLng} onChangeText={setShopLng} keyboardType="numeric" />
+                </View>
               </View>
 
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Phone Number</Text>
-                <TextInput
-                  style={styles.modalInput}
-                  placeholder="9848012345"
-                  placeholderTextColor="#64748B"
-                  value={newShopPhone}
-                  onChangeText={setNewShopPhone}
-                  keyboardType="phone-pad"
-                />
+              {/* Operating Hours */}
+              <View style={styles.switchRow}>
+                <Text style={styles.fieldLabel}>🟢 Open 24 Hours (24/7)</Text>
+                <Switch value={shopIs24Hours} onValueChange={setShopIs24Hours} />
               </View>
 
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Address</Text>
-                <TextInput
-                  style={styles.modalInput}
-                  placeholder="Road No. 12, Banjara Hills, Hyderabad"
-                  placeholderTextColor="#64748B"
-                  value={newShopAddress}
-                  onChangeText={setNewShopAddress}
-                />
-              </View>
+              {!shopIs24Hours && (
+                <View style={styles.twoCol}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.fieldLabel}>Opening Time</Text>
+                    <TextInput style={styles.modalInput} value={shopOpenTime} onChangeText={setShopOpenTime} placeholder="07:00:00" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.fieldLabel}>Closing Time</Text>
+                    <TextInput style={styles.modalInput} value={shopCloseTime} onChangeText={setShopCloseTime} placeholder="22:00:00" />
+                  </View>
+                </View>
+              )}
 
-              <TouchableOpacity style={styles.modalSubmitBtn} onPress={handleCreateShopSubmit}>
-                <Text style={styles.modalSubmitBtnText}>Create & Broadcast Store</Text>
-              </TouchableOpacity>
+              <View style={styles.twoCol}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>Delivery Radius (km)</Text>
+                  <TextInput style={styles.modalInput} value={shopRadius} onChangeText={setShopRadius} keyboardType="numeric" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>Delivery Fee (₹)</Text>
+                  <TextInput style={styles.modalInput} value={shopDeliveryFee} onChangeText={setShopDeliveryFee} keyboardType="numeric" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>Min Order (₹)</Text>
+                  <TextInput style={styles.modalInput} value={shopMinOrder} onChangeText={setShopMinOrder} keyboardType="numeric" />
+                </View>
+              </View>
             </ScrollView>
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setAddShopModalVisible(false)}>
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.saveBtn} onPress={handleSaveAddShop}>
+                <Text style={styles.saveBtnText}>Register & Broadcast Shop</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL 2: EDIT SHOP */}
+      <Modal visible={editShopModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>✏️ Edit Shop & Operating Details</Text>
+              <TouchableOpacity onPress={() => setEditShopModalVisible(false)}>
+                <Ionicons name="close" size={24} color="#94A3B8" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ maxHeight: 500 }} showsVerticalScrollIndicator={false}>
+              <Text style={styles.fieldLabel}>Shop Name *</Text>
+              <TextInput style={styles.modalInput} value={shopName} onChangeText={setShopName} />
+
+              <View style={styles.twoCol}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>Owner Email (Login) *</Text>
+                  <TextInput style={styles.modalInput} value={shopEmail} onChangeText={setShopEmail} autoCapitalize="none" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>Owner Password *</Text>
+                  <TextInput style={styles.modalInput} value={shopPassword} onChangeText={setShopPassword} />
+                </View>
+              </View>
+
+              <Text style={styles.fieldLabel}>Contact Phone Number</Text>
+              <TextInput style={styles.modalInput} value={shopPhone} onChangeText={setPhone} />
+
+              <Text style={styles.fieldLabel}>Address</Text>
+              <TextInput style={styles.modalInput} value={shopAddress} onChangeText={setShopAddress} />
+
+              <View style={styles.twoCol}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>Latitude</Text>
+                  <TextInput style={styles.modalInput} value={shopLat} onChangeText={setShopLat} keyboardType="numeric" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>Longitude</Text>
+                  <TextInput style={styles.modalInput} value={shopLng} onChangeText={setShopLng} keyboardType="numeric" />
+                </View>
+              </View>
+
+              <View style={styles.switchRow}>
+                <Text style={styles.fieldLabel}>🟢 Open 24 Hours</Text>
+                <Switch value={shopIs24Hours} onValueChange={setShopIs24Hours} />
+              </View>
+
+              {!shopIs24Hours && (
+                <View style={styles.twoCol}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.fieldLabel}>Opening Time</Text>
+                    <TextInput style={styles.modalInput} value={shopOpenTime} onChangeText={setShopOpenTime} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.fieldLabel}>Closing Time</Text>
+                    <TextInput style={styles.modalInput} value={shopCloseTime} onChangeText={setShopCloseTime} />
+                  </View>
+                </View>
+              )}
+
+              <View style={styles.twoCol}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>Delivery Radius (km)</Text>
+                  <TextInput style={styles.modalInput} value={shopRadius} onChangeText={setShopRadius} keyboardType="numeric" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>Delivery Fee (₹)</Text>
+                  <TextInput style={styles.modalInput} value={shopDeliveryFee} onChangeText={setShopDeliveryFee} keyboardType="numeric" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>Min Order (₹)</Text>
+                  <TextInput style={styles.modalInput} value={shopMinOrder} onChangeText={setShopMinOrder} keyboardType="numeric" />
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setEditShopModalVisible(false)}>
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.saveBtn} onPress={handleSaveEditShop}>
+                <Text style={styles.saveBtnText}>Save & Sync Changes</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL 3: ADD / EDIT PRODUCT */}
+      <Modal visible={addProductModalVisible || editProductModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{editingProductId ? '✏️ Edit Product' : '📦 Add New Item to Store'}</Text>
+              <TouchableOpacity onPress={() => { setAddProductModalVisible(false); setEditProductModalVisible(false); }}>
+                <Ionicons name="close" size={24} color="#94A3B8" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={{ maxHeight: 500 }} showsVerticalScrollIndicator={false}>
+              {!editingProductId && (
+                <>
+                  <Text style={styles.fieldLabel}>Target Store *</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, marginBottom: 10 }}>
+                    {shops.map(s => (
+                      <TouchableOpacity
+                        key={s.id}
+                        style={[styles.presetChip, selectedShopForProduct === s.id && styles.filterChipActive]}
+                        onPress={() => setSelectedShopForProduct(s.id)}
+                      >
+                        <Text style={[styles.presetChipText, selectedShopForProduct === s.id && styles.filterChipTextActive]}>
+                          {s.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </>
+              )}
+
+              <Text style={styles.fieldLabel}>Product Name *</Text>
+              <TextInput style={styles.modalInput} placeholder="e.g. Amul Taaza Milk 500ml" placeholderTextColor="#64748B" value={prodName} onChangeText={setProdName} />
+
+              <View style={styles.twoCol}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>Selling Price (₹) *</Text>
+                  <TextInput style={styles.modalInput} value={prodPrice} onChangeText={setProdPrice} keyboardType="numeric" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>MRP (₹)</Text>
+                  <TextInput style={styles.modalInput} value={prodMrp} onChangeText={setProdMrp} keyboardType="numeric" />
+                </View>
+              </View>
+
+              <View style={styles.twoCol}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>Unit (kg, g, L, mL, piece, pack)</Text>
+                  <TextInput style={styles.modalInput} value={prodUnit} onChangeText={(t: any) => setProdUnit(t)} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>Unit Value</Text>
+                  <TextInput style={styles.modalInput} value={prodUnitValue} onChangeText={setProdUnitValue} keyboardType="numeric" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fieldLabel}>Stock Qty</Text>
+                  <TextInput style={styles.modalInput} value={prodStock} onChangeText={setProdStock} keyboardType="numeric" />
+                </View>
+              </View>
+
+              <Text style={styles.fieldLabel}>Product Image URL</Text>
+              <TextInput style={styles.modalInput} value={prodImageUrl} onChangeText={setProdImageUrl} placeholder="https://..." placeholderTextColor="#64748B" />
+
+              <View style={styles.switchRow}>
+                <Text style={styles.fieldLabel}>🟢 Available in Stock</Text>
+                <Switch value={prodIsAvailable} onValueChange={setProdIsAvailable} />
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => { setAddProductModalVisible(false); setEditProductModalVisible(false); }}>
+                <Text style={styles.cancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.saveBtn}
+                onPress={editingProductId ? handleSaveEditProduct : handleSaveAddProduct}
+              >
+                <Text style={styles.saveBtnText}>{editingProductId ? 'Save Product Changes' : 'Add Item to Shop'}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -638,20 +1189,32 @@ export default function DeveloperDashboardScreen() {
   );
 }
 
+function getStatusColor(status: string) {
+  switch (status) {
+    case 'pending': return '#F59E0B';
+    case 'accepted': return '#3B82F6';
+    case 'preparing': return '#8B5CF6';
+    case 'ready': return '#10B981';
+    case 'delivered': return '#10B981';
+    case 'cancelled': return '#EF4444';
+    default: return '#64748B';
+  }
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0B0F19',
+    backgroundColor: '#0F172A',
   },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#1E293B',
     borderBottomWidth: 1,
-    borderBottomColor: '#1E293B',
-    backgroundColor: '#0F172A',
+    borderBottomColor: '#334155',
   },
   topLeft: {
     flexDirection: 'row',
@@ -661,17 +1224,27 @@ const styles = StyleSheet.create({
   logoBadge: {
     width: 36,
     height: 36,
-    borderRadius: 10,
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.3)',
-    justifyContent: 'center',
+    borderRadius: 8,
+    backgroundColor: '#10B98120',
     alignItems: 'center',
+    justifyContent: 'center',
   },
   appTitle: {
     fontSize: 16,
     fontWeight: '800',
     color: '#F8FAFC',
+    letterSpacing: 0.3,
+  },
+  adminPill: {
+    backgroundColor: '#EF4444',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  adminPillText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '900',
   },
   syncStatusRow: {
     flexDirection: 'row',
@@ -697,12 +1270,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: 'rgba(16, 185, 129, 0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.3)',
+    backgroundColor: '#10B98120',
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#10B98150',
   },
   syncBtnText: {
     color: '#10B981',
@@ -710,17 +1283,46 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   logoutBtn: {
-    padding: 8,
-    borderRadius: 8,
+    padding: 6,
+    borderRadius: 6,
+    backgroundColor: '#334155',
+  },
+  quickLaunchBanner: {
     backgroundColor: '#1E293B',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#334155',
+  },
+  quickLaunchLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#94A3B8',
+    marginBottom: 6,
+    letterSpacing: 0.5,
+  },
+  quickLaunchRow: {
+    gap: 10,
+  },
+  appBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  appBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
   tabBar: {
     flexDirection: 'row',
-    backgroundColor: '#0F172A',
+    backgroundColor: '#1E293B',
+    paddingHorizontal: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#1E293B',
-    paddingHorizontal: 16,
-    overflow: 'scroll',
+    borderBottomColor: '#334155',
   },
   tabItem: {
     flexDirection: 'row',
@@ -743,300 +1345,518 @@ const styles = StyleSheet.create({
     color: '#10B981',
     fontWeight: '800',
   },
-  content: {
-    padding: 20,
-    maxWidth: 1080,
-    width: '100%',
-    alignSelf: 'center',
+  mainScroll: {
+    flex: 1,
   },
-  sectionHeader: {
-    marginBottom: 20,
+  scrollContent: {
+    padding: 16,
+    paddingBottom: 60,
   },
   sectionHeaderRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    justifyContent: 'space-between',
+    marginBottom: 12,
+    flexWrap: 'wrap',
+    gap: 10,
   },
   sectionTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '800',
     color: '#F8FAFC',
-    marginBottom: 4,
   },
   sectionSubtitle: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#94A3B8',
+    marginTop: 2,
   },
-  gridContainer: {
+  primaryActionBtn: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 16,
-    marginBottom: 24,
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#059669',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
   },
-  appCard: {
-    flex: 1,
-    minWidth: 280,
+  primaryActionBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: '#1E293B',
-    borderRadius: 16,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 16,
     borderWidth: 1,
     borderColor: '#334155',
-    overflow: 'hidden',
+    gap: 8,
   },
-  appCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    padding: 16,
+  searchInput: {
+    flex: 1,
+    color: '#F8FAFC',
+    fontSize: 14,
   },
-  appCardIconBg: {
-    width: 48,
-    height: 48,
+  shopCard: {
+    backgroundColor: '#1E293B',
     borderRadius: 12,
-    backgroundColor: 'rgba(16, 185, 129, 0.2)',
-    justifyContent: 'center',
+    padding: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  shopCardTop: {
+    flexDirection: 'row',
+    gap: 12,
     alignItems: 'center',
   },
-  appCardTitle: {
+  shopLogo: {
+    width: 50,
+    height: 50,
+    borderRadius: 8,
+    backgroundColor: '#334155',
+  },
+  shopNameText: {
     fontSize: 16,
     fontWeight: '800',
     color: '#F8FAFC',
   },
-  appCardBadge: {
+  shopAddressText: {
     fontSize: 12,
-    color: '#10B981',
+    color: '#94A3B8',
+    marginTop: 2,
+  },
+  shopMetaText: {
+    fontSize: 11,
+    color: '#CBD5E1',
+    marginTop: 2,
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  statusBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  metaGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#334155',
+  },
+  metaBox: {
+    flex: 1,
+    minWidth: '45%',
+    backgroundColor: '#0F172A',
+    padding: 8,
+    borderRadius: 6,
+  },
+  metaBoxLabel: {
+    fontSize: 10,
+    color: '#64748B',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  metaBoxVal: {
+    fontSize: 12,
+    color: '#E2E8F0',
     fontWeight: '600',
     marginTop: 2,
   },
-  appCardBody: {
-    padding: 16,
+  shopActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#334155',
   },
-  appCardDesc: {
-    fontSize: 13,
-    color: '#94A3B8',
-    lineHeight: 18,
+  editBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#1E3A8A40',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#3B82F6',
+  },
+  editBtnText: {
+    color: '#60A5FA',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  addProdToShopBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#064E3B40',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#10B981',
+  },
+  addProdToShopBtnText: {
+    color: '#34D399',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  toggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#78350F40',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#F59E0B',
+  },
+  toggleBtnText: {
+    color: '#FBBF24',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  deleteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#7F1D1D40',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#EF4444',
+  },
+  deleteBtnText: {
+    color: '#F87171',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  filterRow: {
     marginBottom: 12,
   },
-  urlBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#0F172A',
-    padding: 8,
-    borderRadius: 8,
-    marginBottom: 14,
+  filterRowLabel: {
+    fontSize: 12,
+    color: '#94A3B8',
+    fontWeight: '700',
+    marginBottom: 6,
   },
-  urlText: {
-    fontSize: 11,
-    color: '#64748B',
-    flex: 1,
-  },
-  launchBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    borderRadius: 10,
-  },
-  launchBtnText: {
-    color: '#0F172A',
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  actionCard: {
+  filterChip: {
     backgroundColor: '#1E293B',
-    borderRadius: 16,
-    padding: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
     borderWidth: 1,
     borderColor: '#334155',
   },
-  actionCardTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#E2E8F0',
-    marginBottom: 14,
+  filterChipActive: {
+    backgroundColor: '#059669',
+    borderColor: '#10B981',
   },
-  actionButtonRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  actionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 10,
-  },
-  actionBtnText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#0F172A',
-  },
-  smallAddBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#10B981',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  smallAddBtnText: {
+  filterChipText: {
+    color: '#94A3B8',
     fontSize: 12,
-    fontWeight: '700',
-    color: '#0F172A',
+    fontWeight: '600',
   },
-  itemRow: {
+  filterChipTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+  },
+  prodCard: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: '#1E293B',
-    borderRadius: 12,
-    padding: 16,
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#334155',
+    gap: 12,
+  },
+  prodImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 6,
+    backgroundColor: '#334155',
+  },
+  prodNameText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#F8FAFC',
+  },
+  prodShopText: {
+    fontSize: 11,
+    color: '#60A5FA',
+    marginTop: 2,
+  },
+  prodPriceText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#10B981',
+  },
+  prodMrpText: {
+    fontSize: 12,
+    color: '#64748B',
+    textDecorationLine: 'line-through',
+  },
+  prodUnitText: {
+    fontSize: 11,
+    color: '#94A3B8',
+  },
+  prodStockText: {
+    fontSize: 11,
+    color: '#F59E0B',
+  },
+  prodActionCol: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  prodEditBtn: {
+    padding: 6,
+    backgroundColor: '#1E3A8A40',
+    borderRadius: 6,
+  },
+  prodAvailBtn: {
+    padding: 6,
+    backgroundColor: '#0F172A',
+    borderRadius: 6,
+  },
+  prodDeleteBtn: {
+    padding: 6,
+    backgroundColor: '#7F1D1D40',
+    borderRadius: 6,
+  },
+  orderCard: {
+    backgroundColor: '#1E293B',
+    padding: 14,
+    borderRadius: 10,
     marginBottom: 10,
     borderWidth: 1,
     borderColor: '#334155',
   },
-  itemInfo: {
-    flex: 1,
-    marginRight: 12,
-  },
-  itemHeaderRow: {
+  orderCardTop: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    gap: 10,
-    marginBottom: 4,
   },
-  itemName: {
-    fontSize: 15,
-    fontWeight: '700',
+  orderIdText: {
+    fontSize: 14,
+    fontWeight: '800',
     color: '#F8FAFC',
   },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  statusBadgeText: {
-    fontSize: 10,
-    fontWeight: '800',
-  },
-  itemMeta: {
+  orderStoreText: {
     fontSize: 12,
-    color: '#94A3B8',
+    color: '#60A5FA',
     marginTop: 2,
   },
-  itemActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  iconBtn: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: '#0F172A',
-  },
-  smallStatusBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+  orderStatusPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: 6,
   },
-  smallStatusBtnText: {
+  orderStatusText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  orderAddressText: {
+    fontSize: 12,
+    color: '#94A3B8',
+    marginTop: 6,
+  },
+  orderItemsText: {
+    fontSize: 12,
+    color: '#CBD5E1',
+    marginTop: 4,
+  },
+  orderBottomRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#334155',
+  },
+  orderTotalText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#10B981',
+  },
+  statusMiniBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  statusMiniBtnText: {
+    color: '#FFFFFF',
     fontSize: 11,
     fontWeight: '700',
-    color: '#0F172A',
   },
   emptyCard: {
     backgroundColor: '#1E293B',
-    borderRadius: 16,
-    padding: 40,
+    padding: 30,
+    borderRadius: 12,
     alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
     borderColor: '#334155',
   },
   emptyTitle: {
     fontSize: 16,
-    fontWeight: '700',
-    color: '#E2E8F0',
+    fontWeight: '800',
+    color: '#F8FAFC',
+    marginTop: 10,
+  },
+  emptySub: {
+    fontSize: 12,
+    color: '#94A3B8',
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  seedBtn: {
+    backgroundColor: '#059669',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 6,
     marginTop: 12,
   },
-  emptySubtitle: {
-    fontSize: 13,
-    color: '#64748B',
-    marginTop: 4,
+  seedBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  wipeBtn: {
+    backgroundColor: '#7F1D1D',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 6,
+  },
+  wipeBtnText: {
+    color: '#FCA5A5',
+    fontSize: 12,
+    fontWeight: '700',
   },
   jsonBox: {
-    backgroundColor: '#0F172A',
-    borderRadius: 12,
-    padding: 16,
+    backgroundColor: '#020617',
+    padding: 14,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: '#334155',
   },
   jsonText: {
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-    color: '#34D399',
-    fontSize: 12,
-    lineHeight: 18,
+    fontFamily: Platform.OS === 'web' ? 'monospace' : undefined,
+    color: '#38BDF8',
+    fontSize: 11,
+    lineHeight: 16,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    backgroundColor: 'rgba(0,0,0,0.7)',
     justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
+    padding: 16,
   },
-  modalCard: {
+  modalContent: {
     backgroundColor: '#1E293B',
-    borderRadius: 20,
-    padding: 24,
-    maxWidth: 500,
-    width: '100%',
+    borderRadius: 14,
+    padding: 20,
     borderWidth: 1,
     borderColor: '#334155',
+    maxHeight: '90%',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '800',
     color: '#F8FAFC',
   },
-  inputGroup: {
-    marginBottom: 14,
-  },
-  label: {
+  fieldLabel: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#94A3B8',
-    marginBottom: 6,
+    marginTop: 10,
+    marginBottom: 4,
   },
   modalInput: {
     backgroundColor: '#0F172A',
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    color: '#F8FAFC',
     borderWidth: 1,
     borderColor: '#334155',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    height: 44,
-    color: '#F8FAFC',
-    fontSize: 14,
+    fontSize: 13,
   },
-  modalSubmitBtn: {
-    backgroundColor: '#10B981',
-    borderRadius: 12,
-    paddingVertical: 14,
+  twoCol: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  presetChip: {
+    backgroundColor: '#0F172A',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  presetChipText: {
+    color: '#38BDF8',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  switchRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: 12,
+    marginBottom: 6,
   },
-  modalSubmitBtnText: {
-    color: '#0F172A',
-    fontSize: 14,
-    fontWeight: '800',
+  modalFooter: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+    marginTop: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#334155',
+  },
+  cancelBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 6,
+    backgroundColor: '#334155',
+  },
+  cancelBtnText: {
+    color: '#CBD5E1',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  saveBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 6,
+    backgroundColor: '#059669',
+  },
+  saveBtnText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
   },
 });
