@@ -17,7 +17,7 @@ services:
     name: localmart-customer
     runtime: static
     rootDir: customer
-    buildCommand: npm install && npx expo export --platform web
+    buildCommand: npm install && npx expo export --platform web && node -e "const fs=require('fs'); fs.mkdirSync('dist', {recursive:true}); fs.writeFileSync('dist/_redirects', '/*    /index.html   200\n');"
     staticPublishPath: dist
     routes:
       - type: rewrite
@@ -32,7 +32,7 @@ services:
     name: localmart-shopkeeper
     runtime: static
     rootDir: shopkeeper
-    buildCommand: npm install && npx expo export --platform web
+    buildCommand: npm install && npx expo export --platform web && node -e "const fs=require('fs'); fs.mkdirSync('dist', {recursive:true}); fs.writeFileSync('dist/_redirects', '/*    /index.html   200\n');"
     staticPublishPath: dist
     routes:
       - type: rewrite
@@ -47,7 +47,7 @@ services:
     name: localmart-delivery
     runtime: static
     rootDir: delivery
-    buildCommand: npm install && npx expo export --platform web
+    buildCommand: npm install && npx expo export --platform web && node -e "const fs=require('fs'); fs.mkdirSync('dist', {recursive:true}); fs.writeFileSync('dist/_redirects', '/*    /index.html   200\n');"
     staticPublishPath: dist
     routes:
       - type: rewrite
@@ -62,7 +62,7 @@ services:
     name: localmart-developer
     runtime: static
     rootDir: developer
-    buildCommand: npm install && npx expo export --platform web
+    buildCommand: npm install && npx expo export --platform web && node -e "const fs=require('fs'); fs.mkdirSync('dist', {recursive:true}); fs.writeFileSync('dist/_redirects', '/*    /index.html   200\n');"
     staticPublishPath: dist
     routes:
       - type: rewrite
