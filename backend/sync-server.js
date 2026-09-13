@@ -53,8 +53,10 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  const urlPath = (req.url || '').split('?')[0];
+
   // 1. SSE Live Stream for Real-Time Instant Push
-  if (req.url === '/api/events') {
+  if (urlPath === '/api/events') {
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
@@ -70,7 +72,7 @@ const server = http.createServer((req, res) => {
   }
 
   // 2. GET /api/sync — Fetch latest snapshot
-  if (req.method === 'GET' && req.url === '/api/sync') {
+  if (req.method === 'GET' && urlPath === '/api/sync') {
     const db = readDb();
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(db));
@@ -78,7 +80,7 @@ const server = http.createServer((req, res) => {
   }
 
   // 3. POST /api/sync — Push update & broadcast to all connected apps
-  if (req.method === 'POST' && req.url === '/api/sync') {
+  if (req.method === 'POST' && urlPath === '/api/sync') {
     let body = '';
     req.on('data', chunk => { body += chunk; });
     req.on('end', () => {
@@ -117,7 +119,7 @@ const server = http.createServer((req, res) => {
   }
 
   // 4. POST /api/reset — Wipe database
-  if (req.method === 'POST' && req.url === '/api/reset') {
+  if (req.method === 'POST' && urlPath === '/api/reset') {
     const freshDb = { shops: [], products: [], orders: [], lastUpdated: Date.now() };
     writeDb(freshDb);
     clients.forEach(client => {

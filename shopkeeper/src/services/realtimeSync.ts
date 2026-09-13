@@ -57,6 +57,8 @@ export interface SyncMessage {
 }
 
 export const realtimeSync = {
+  getSyncServerUrl,
+
   // 1. Broadcast an update across local server, BroadcastChannel, and Supabase
   async broadcast(type: SyncEventType, data?: { payload?: any; snapshot?: { shops?: any[]; products?: any[]; orders?: any[] } } | any) {
     let payload = data?.payload !== undefined ? data.payload : data;
@@ -87,7 +89,8 @@ export const realtimeSync = {
 
     // B. Push to shared Local Sync Server (Cross-Port / Cross-App Bridge)
     try {
-      fetch(`${SYNC_SERVER_URL}/api/sync`, {
+      const syncUrl = getSyncServerUrl();
+      fetch(`${syncUrl}/api/sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(msg),
@@ -116,7 +119,8 @@ export const realtimeSync = {
           if (eventSource) {
             try { eventSource.close(); } catch (e) {}
           }
-          eventSource = new EventSource(`${SYNC_SERVER_URL}/api/events`);
+          const syncUrl = getSyncServerUrl();
+          eventSource = new EventSource(`${syncUrl}/api/events`);
           eventSource.onmessage = (event: any) => {
             try {
               const data = JSON.parse(event.data);
@@ -183,7 +187,8 @@ export const realtimeSync = {
 
   async fetchFromServer() {
     try {
-      const res = await fetch(`${SYNC_SERVER_URL}/api/sync`, { method: 'GET' });
+      const syncUrl = getSyncServerUrl();
+      const res = await fetch(`${syncUrl}/api/sync`, { method: 'GET' });
       if (res.ok) {
         const data = await res.json();
         if (data && (data.shops || data.products || data.orders)) {

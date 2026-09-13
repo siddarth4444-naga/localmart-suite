@@ -22,9 +22,8 @@ export const getSyncServerUrl = () => {
   return 'https://localmart-sync-api.onrender.com';
 };
 
-const SYNC_SERVER_HTTP = `${getSyncServerUrl()}/api`;
-
 class RealtimeSyncService {
+  public getSyncServerUrl = getSyncServerUrl;
   private eventSource: any = null;
   private isConnected = false;
 
@@ -33,7 +32,8 @@ class RealtimeSyncService {
 
     if (typeof window !== 'undefined' && typeof window.EventSource !== 'undefined') {
       try {
-        this.eventSource = new window.EventSource(`${SYNC_SERVER_HTTP}/events`);
+        const syncUrl = getSyncServerUrl();
+        this.eventSource = new window.EventSource(`${syncUrl}/api/events`);
 
         this.eventSource.onopen = () => {
           this.isConnected = true;
@@ -75,7 +75,8 @@ class RealtimeSyncService {
 
   public async fetchSnapshot() {
     try {
-      const res = await fetch(`${SYNC_SERVER_HTTP}/sync`);
+      const syncUrl = getSyncServerUrl();
+      const res = await fetch(`${syncUrl}/api/sync`);
       if (res.ok) {
         const db = await res.json();
         this.applySnapshot(db);
@@ -87,7 +88,8 @@ class RealtimeSyncService {
 
   public async pushUpdate(snapshotUpdate: any, eventType: string = 'DELIVERY_UPDATE') {
     try {
-      await fetch(`${SYNC_SERVER_HTTP}/sync`, {
+      const syncUrl = getSyncServerUrl();
+      await fetch(`${syncUrl}/api/sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
