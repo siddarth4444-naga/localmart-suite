@@ -14,10 +14,10 @@ export const DEFAULT_CATEGORIES: Category[] = [
   { id: 'c8', name: 'Personal & Baby Care', icon: 'medkit-outline', sort_order: 8 },
 ];
 
-const STORAGE_KEY_SHOPS = '@localmart_customer_shops_v3';
-const STORAGE_KEY_PRODUCTS = '@localmart_customer_products_v3';
-const STORAGE_KEY_ORDERS = '@localmart_customer_orders_v3';
-const STORAGE_KEY_ACTIVE_SHOPKEEPER_SHOP_ID = '@localmart_customer_active_shop_id';
+const STORAGE_KEY_SHOPS = '@localmart_shops';
+const STORAGE_KEY_PRODUCTS = '@localmart_products';
+const STORAGE_KEY_ORDERS = '@localmart_orders';
+const STORAGE_KEY_ACTIVE_SHOPKEEPER_SHOP_ID = '@localmart_active_shop_id';
 
 interface ShopState {
   shops: Shop[];
