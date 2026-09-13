@@ -15,30 +15,14 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 const queryClient = new QueryClient();
 
 export default function DeliveryRootLayout() {
-  const [loaded, error] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-  });
-
   useEffect(() => {
     useAuthStore.getState().initialize();
     useShopStore.getState().initialize();
+    SplashScreen.hideAsync().catch(() => {});
     const cleanup = realtimeSync.initListeners();
     return () => {
       if (typeof cleanup === 'function') cleanup();
     };
-  }, []);
-
-  useEffect(() => {
-    if (loaded || error) {
-      SplashScreen.hideAsync().catch(() => {});
-    }
-  }, [loaded, error]);
-
-  useEffect(() => {
-    const timeout = setTimeout(() => {
-      SplashScreen.hideAsync().catch(() => {});
-    }, 800);
-    return () => clearTimeout(timeout);
   }, []);
 
   return (
