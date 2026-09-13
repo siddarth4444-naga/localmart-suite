@@ -25,12 +25,13 @@ import ShopCard from '../../src/components/ShopCard';
 const { width } = Dimensions.get('window');
 
 const PRESET_NEIGHBORHOODS = [
-  { name: 'Banjara Hills', address: 'Road No. 12, Banjara Hills, Hyderabad', lat: 17.4142, lng: 78.4335, icon: 'business' as const },
+  { name: 'Hyderabad (Banjara / Central)', address: 'Road No. 12, Banjara Hills, Hyderabad', lat: 17.4142, lng: 78.4335, icon: 'business' as const },
   { name: 'Madhapur / HITEC City', address: 'Cyber Towers, Madhapur, Hyderabad', lat: 17.4483, lng: 78.3915, icon: 'laptop' as const },
-  { name: 'Jubilee Hills', address: 'Road No. 36, Jubilee Hills, Hyderabad', lat: 17.4319, lng: 78.4073, icon: 'home' as const },
-  { name: 'Gachibowli', address: 'Financial District, Gachibowli, Hyderabad', lat: 17.4401, lng: 78.3489, icon: 'trail-sign' as const },
-  { name: 'Kukatpally', address: 'KPHB Colony, Kukatpally, Hyderabad', lat: 17.4938, lng: 78.3986, icon: 'storefront' as const },
-  { name: 'Secunderabad', address: 'Clock Tower / Station Area, Secunderabad', lat: 17.4447, lng: 78.4983, icon: 'train' as const },
+  { name: 'Bengaluru (Indiranagar / Koramangala)', address: '100 Feet Road, Indiranagar, Bengaluru', lat: 12.9716, lng: 77.5946, icon: 'navigate' as const },
+  { name: 'Mumbai (Bandra / Andheri)', address: 'Linking Road, Bandra West, Mumbai', lat: 19.0596, lng: 72.8295, icon: 'business' as const },
+  { name: 'Delhi NCR (Connaught Place)', address: 'Connaught Place, New Delhi', lat: 28.6304, lng: 77.2177, icon: 'storefront' as const },
+  { name: 'Chennai (T. Nagar)', address: 'Usman Road, T. Nagar, Chennai', lat: 13.0418, lng: 80.2341, icon: 'home' as const },
+  { name: 'Pune (Koregaon Park)', address: 'North Main Road, Koregaon Park, Pune', lat: 18.5362, lng: 73.8940, icon: 'trail-sign' as const },
 ];
 
 const PROMO_BANNERS = [
