@@ -11,15 +11,18 @@ export const getSyncServerUrl = (): string => {
     return url.replace(/\/$/, '');
   }
 
-  // Local development fallback
+  // Cloud & Mobile detection
   if (typeof window !== 'undefined' && window.location && window.location.hostname) {
     const host = window.location.hostname;
+    if (host.includes('onrender.com') || host.includes('render.com')) {
+      return 'https://localmart-sync-api.onrender.com';
+    }
     if (host === 'localhost' || host === '127.0.0.1' || host.startsWith('192.168.') || host.startsWith('10.')) {
       return `http://${host}:5000`;
     }
   }
 
-  return 'http://localhost:5000';
+  return 'https://localmart-sync-api.onrender.com';
 };
 
 // Web Broadcast Channel for instant sub-millisecond tab-to-tab sync on web

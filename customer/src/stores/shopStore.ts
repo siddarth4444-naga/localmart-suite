@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Shop, Product, Category, Order, OrderStatus } from '../types';
-import { realtimeSync } from '../services/realtimeSync';
+import { realtimeSync, getSyncServerUrl } from '../services/realtimeSync';
 
 export const DEFAULT_CATEGORIES: Category[] = [
   { id: 'c1', name: 'Fruits & Veggies', icon: 'nutrition-outline', sort_order: 1 },
@@ -73,9 +73,10 @@ export const useShopStore = create<ShopState>((set, get) => ({
       let parsedProducts: Product[] = storedProducts ? JSON.parse(storedProducts) : [];
       let parsedOrders: Order[] = storedOrders ? JSON.parse(storedOrders) : [];
 
-      // Fetch latest snapshot from Shared Sync Bridge Server (Port 5000)
+      // Fetch latest snapshot from Shared Sync Bridge Server (Port 5000 / Cloud API)
       try {
-        const syncRes = await fetch('http://localhost:5000/api/sync');
+        const syncUrl = getSyncServerUrl();
+        const syncRes = await fetch(`${syncUrl}/api/sync`);
         if (syncRes.ok) {
           const serverDb = await syncRes.json();
           if (serverDb && Array.isArray(serverDb.shops) && serverDb.shops.length > 0) {
@@ -86,7 +87,7 @@ export const useShopStore = create<ShopState>((set, get) => ({
             AsyncStorage.setItem(STORAGE_KEY_PRODUCTS, JSON.stringify(parsedProducts)).catch(() => {});
             AsyncStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(parsedOrders)).catch(() => {});
           } else if (parsedShops.length > 0 && (!serverDb.shops || serverDb.shops.length === 0)) {
-            fetch('http://localhost:5000/api/sync', {
+            fetch(`${syncUrl}/api/sync`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({

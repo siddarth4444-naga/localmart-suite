@@ -172,6 +172,22 @@
   ],
   "products": [
     {
+      "id": "prod_1789636505272",
+      "shop_id": "shop_1789108938651",
+      "category_id": "c1",
+      "name": "mango",
+      "description": "",
+      "image_url": "https://images.unsplash.com/photo-1571771894821-ce9b6c11b08e?auto=format&fit=crop&w=400&q=80",
+      "price": 40,
+      "mrp": 50,
+      "unit": "kg",
+      "unit_value": 1,
+      "stock_quantity": 100,
+      "is_available": true,
+      "created_at": "2026-09-17T09:15:05.272Z",
+      "updated_at": "2026-09-17T09:15:05.272Z"
+    },
+    {
       "id": "prod_1789628180244",
       "shop_id": "shop_1789108938651",
       "category_id": "c1",
@@ -1135,5 +1151,5 @@
       "delivered_at": "2026-09-08T11:51:21.963Z"
     }
   ],
-  "lastUpdated": 1789628670335
+  "lastUpdated": 1789636505291
 }
