@@ -43,9 +43,12 @@ interface ShopState {
   deleteProduct: (id: string) => void;
   toggleProductAvailability: (id: string) => void;
 
-  // Order Actions (Customer + Shopkeeper)
+  // Order & Delivery Actions (Customer + Shopkeeper + Delivery Partner)
   addOrder: (orderData: Partial<Order>) => Order;
   updateOrderStatus: (orderId: string, status: OrderStatus) => void;
+  acceptDelivery: (orderId: string, rider?: { id: string; name: string; phone: string }) => void;
+  pickupDelivery: (orderId: string) => void;
+  completeDelivery: (orderId: string) => void;
 
   // Reset / Clear
   clearAllShops: () => void;
@@ -330,6 +333,65 @@ export const useShopStore = create<ShopState>((set, get) => ({
     AsyncStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(updatedOrders)).catch(() => {});
     realtimeSync.broadcast('ORDER_STATUS_UPDATED', {
       payload: { id: orderId, status },
+      snapshot: { shops: get().shops, products: get().products, orders: updatedOrders }
+    });
+  },
+
+  acceptDelivery: (orderId, rider) => {
+    const updatedOrders = get().orders.map(o => {
+      if (o.id === orderId) {
+        return {
+          ...o,
+          status: 'delivery_accepted' as OrderStatus,
+          delivery_partner: rider || { id: 'dp_1', name: 'Ravi Kumar (Rider)', phone: '+91 98480 12345' },
+          updated_at: new Date().toISOString(),
+        };
+      }
+      return o;
+    });
+    set({ orders: updatedOrders });
+    AsyncStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(updatedOrders)).catch(() => {});
+    realtimeSync.broadcast('ORDER_STATUS_UPDATED', {
+      payload: { id: orderId, status: 'delivery_accepted', rider },
+      snapshot: { shops: get().shops, products: get().products, orders: updatedOrders }
+    });
+  },
+
+  pickupDelivery: (orderId) => {
+    const updatedOrders = get().orders.map(o => {
+      if (o.id === orderId) {
+        return {
+          ...o,
+          status: 'out_for_delivery' as OrderStatus,
+          updated_at: new Date().toISOString(),
+        };
+      }
+      return o;
+    });
+    set({ orders: updatedOrders });
+    AsyncStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(updatedOrders)).catch(() => {});
+    realtimeSync.broadcast('ORDER_STATUS_UPDATED', {
+      payload: { id: orderId, status: 'out_for_delivery' },
+      snapshot: { shops: get().shops, products: get().products, orders: updatedOrders }
+    });
+  },
+
+  completeDelivery: (orderId) => {
+    const updatedOrders = get().orders.map(o => {
+      if (o.id === orderId) {
+        return {
+          ...o,
+          status: 'delivered' as OrderStatus,
+          payment_status: 'paid' as any,
+          updated_at: new Date().toISOString(),
+        };
+      }
+      return o;
+    });
+    set({ orders: updatedOrders });
+    AsyncStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(updatedOrders)).catch(() => {});
+    realtimeSync.broadcast('ORDER_STATUS_UPDATED', {
+      payload: { id: orderId, status: 'delivered', payment_status: 'paid' },
       snapshot: { shops: get().shops, products: get().products, orders: updatedOrders }
     });
   },
