@@ -10,11 +10,14 @@ import { realtimeSync } from '../src/services/realtimeSync';
 import { useShopStore } from '../src/stores/shopStore';
 import { useAuthStore } from '../src/stores/authStore';
 
-SplashScreen.preventAutoHideAsync().catch(() => {});
+// Prevent splash screen auto-hiding with safe fallback
+SplashScreen.preventAutoHideAsync().catch(() => {
+  /* reload / already hidden */
+});
 
 const queryClient = new QueryClient();
 
-export default function DeveloperRootLayout() {
+export default function RootLayout() {
   useEffect(() => {
     useAuthStore.getState().initialize();
     useShopStore.getState().initialize();
@@ -31,9 +34,13 @@ export default function DeveloperRootLayout() {
         <StatusBar style="dark" />
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="index" />
-          <Stack.Screen name="dashboard" />
+          <Stack.Screen name="(auth)" />
+          <Stack.Screen name="(customer)" />
+          <Stack.Screen name="(shopkeeper)" />
+          <Stack.Screen name="(developer)" />
         </Stack>
       </QueryClientProvider>
     </SafeAreaProvider>
   );
 }
+

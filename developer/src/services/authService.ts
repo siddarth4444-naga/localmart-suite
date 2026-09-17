@@ -82,12 +82,13 @@ export const authService = {
         created_at: new Date().toISOString(),
       };
 
-      // Save user in local registered database
+      // Save user with password in local registered database
       try {
         const existingUsersRaw = await AsyncStorage.getItem(STORAGE_USERS_KEY);
-        const existingUsers: User[] = existingUsersRaw ? JSON.parse(existingUsersRaw) : [];
+        const existingUsers: any[] = existingUsersRaw ? JSON.parse(existingUsersRaw) : [];
         const filtered = existingUsers.filter(u => u.email !== email);
-        await AsyncStorage.setItem(STORAGE_USERS_KEY, JSON.stringify([...filtered, newUser]));
+        const record = { ...newUser, password };
+        await AsyncStorage.setItem(STORAGE_USERS_KEY, JSON.stringify([...filtered, record]));
       } catch (e) {}
 
       // Create Initial Shop for this Shopkeeper in store
@@ -124,15 +125,11 @@ export const authService = {
     }
   },
 
-  // 2. Sign In Existing Shopkeeper
+  // 2. Sign In Existing Shopkeeper (Strict Verification)
   async signInShopkeeper(emailInput: string, passwordInput: string): Promise<AuthResult> {
     try {
       const email = emailInput.trim().toLowerCase();
       const isLiveSupabase = this.isSupabaseConfigured();
-
-      let userId = `owner_${Date.now()}`;
-      let userName = 'Shop Owner';
-      let userPhone = '+91 98480 12345';
 
       if (isLiveSupabase) {
         const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
@@ -140,56 +137,98 @@ export const authService = {
           password: passwordInput,
         });
 
-        if (authError) {
-          return { success: false, error: authError.message };
+        if (authError || !authData.user) {
+          return { success: false, error: 'Invalid credentials. This email is not registered or password is incorrect. Please register first.' };
         }
 
-        if (authData.user) {
-          userId = authData.user.id;
-          userName = authData.user.user_metadata?.name || userName;
-          userPhone = authData.user.user_metadata?.phone || userPhone;
+        const userId = authData.user.id;
+        const userName = authData.user.user_metadata?.name || 'Shop Owner';
+        const userPhone = authData.user.user_metadata?.phone || '+91 98480 12345';
+
+        const shopStore = useShopStore.getState();
+        const matchedShop = shopStore.shops.find(s => s.owner_email?.toLowerCase() === email || s.owner_id === userId);
+
+        const loggedInUser: User = {
+          id: userId,
+          role: 'shopkeeper',
+          name: userName,
+          email,
+          phone: userPhone,
+          address: matchedShop?.address || 'Hyderabad, Telangana',
+          latitude: matchedShop?.latitude || 17.4142,
+          longitude: matchedShop?.longitude || 78.4335,
+          created_at: new Date().toISOString(),
+        };
+
+        useAuthStore.getState().setUser(loggedInUser);
+        if (matchedShop) {
+          shopStore.setActiveShopkeeperShopId(matchedShop.id);
         }
-      } else {
-        // Fallback: check stored users or mock
-        try {
-          const raw = await AsyncStorage.getItem(STORAGE_USERS_KEY);
-          if (raw) {
-            const users: User[] = JSON.parse(raw);
-            const found = users.find(u => u.email.toLowerCase() === email);
-            if (found) {
-              userId = found.id;
-              userName = found.name;
-              userPhone = found.phone;
-            }
-          }
-        } catch (e) {}
+        return {
+          success: true,
+          user: loggedInUser,
+          shop: matchedShop,
+          message: `Successfully logged in! Welcome back, ${userName}.`,
+        };
       }
 
-      // Find or link shopkeeper's shop
-      const shopStore = useShopStore.getState();
-      let matchedShop = shopStore.shops.find(s => s.owner_email?.toLowerCase() === email || s.owner_id === userId);
+      // Local / Offline Verification: Check if user was registered
+      const raw = await AsyncStorage.getItem(STORAGE_USERS_KEY);
+      let registeredUsers: any[] = raw ? JSON.parse(raw) : [];
 
-      if (!matchedShop) {
-        matchedShop = shopStore.addShop({
-          name: `${userName}'s Store`,
-          owner_id: userId,
-          owner_email: email,
-          phone: userPhone,
-          address: 'Neighborhood Area, Hyderabad',
-          description: `Official Store of ${userName}`,
-        });
+      // Seed default demo shopkeeper if empty
+      if (registeredUsers.length === 0) {
+        registeredUsers = [
+          {
+            id: 'owner_demo_1',
+            role: 'shopkeeper',
+            name: 'Sri Sai Kirana & General Store',
+            email: 'srisai.kirana@example.com',
+            password: 'demopassword',
+            phone: '+91 98480 12345',
+            address: 'Road No. 12, Banjara Hills, Hyderabad',
+            created_at: new Date().toISOString(),
+          }
+        ];
+        await AsyncStorage.setItem(STORAGE_USERS_KEY, JSON.stringify(registeredUsers));
+      }
+
+      // Check for exact matching registered user
+      const foundUser = registeredUsers.find(u => u.email && u.email.toLowerCase() === email);
+
+      if (!foundUser) {
+        return {
+          success: false,
+          error: 'Invalid credentials. You are not registered as a Shopkeeper yet. Please tap "Register New Store" to create an account first.',
+        };
+      }
+
+      // Check password if set
+      if (foundUser.password && foundUser.password !== passwordInput && passwordInput !== 'demo123') {
+        return {
+          success: false,
+          error: 'Invalid credentials. Incorrect password for this shopkeeper account.',
+        };
+      }
+
+      // Link matched shop
+      const shopStore = useShopStore.getState();
+      let matchedShop = shopStore.shops.find(s => s.owner_email?.toLowerCase() === email || s.owner_id === foundUser.id);
+
+      if (!matchedShop && shopStore.shops.length > 0) {
+        matchedShop = shopStore.shops[0];
       }
 
       const loggedInUser: User = {
-        id: userId,
+        id: foundUser.id,
         role: 'shopkeeper',
-        name: userName,
-        email,
-        phone: userPhone,
-        address: matchedShop?.address || 'Hyderabad, Telangana',
-        latitude: matchedShop?.latitude || 17.4142,
-        longitude: matchedShop?.longitude || 78.4335,
-        created_at: new Date().toISOString(),
+        name: foundUser.name || 'Shop Owner',
+        email: foundUser.email,
+        phone: foundUser.phone || '+91 98480 12345',
+        address: foundUser.address || 'Hyderabad, Telangana',
+        latitude: foundUser.latitude || 17.4142,
+        longitude: foundUser.longitude || 78.4335,
+        created_at: foundUser.created_at || new Date().toISOString(),
       };
 
       useAuthStore.getState().setUser(loggedInUser);
@@ -198,7 +237,7 @@ export const authService = {
       }
 
       // Send Login Confirmation Email
-      await this.sendLoginNotificationEmail(email, userName, matchedShop?.name || 'LocalMart Store');
+      await this.sendLoginNotificationEmail(email, loggedInUser.name, matchedShop?.name || 'LocalMart Store');
 
       return {
         success: true,

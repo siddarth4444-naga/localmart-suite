@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { User, UserRole } from '../types';
 
-const STORAGE_KEY_CURRENT_USER = '@localmart_customer_current_user';
+const STORAGE_KEY_CURRENT_USER = '@localmart_current_user';
 
 interface AuthState {
   user: User | null;

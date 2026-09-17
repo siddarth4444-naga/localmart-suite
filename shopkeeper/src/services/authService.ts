@@ -172,6 +172,26 @@ export const authService = {
         };
       }
 
+      // Ensure latest shops and users are initialized and synced from live backend
+      const shopStore = useShopStore.getState();
+      await shopStore.initialize();
+      try {
+        const syncUrl = typeof window !== 'undefined' && window.location && window.location.hostname
+          ? `http://${window.location.hostname}:5000`
+          : 'http://localhost:5000';
+        const res = await fetch(`${syncUrl}/api/sync`);
+        if (res.ok) {
+          const syncData = await res.json();
+          if (syncData && Array.isArray(syncData.shops) && syncData.shops.length > 0) {
+            useShopStore.setState({
+              shops: syncData.shops,
+              products: syncData.products || [],
+              orders: syncData.orders || []
+            });
+          }
+        }
+      } catch (e) {}
+
       // Local / Offline Verification: Check if user was registered
       const raw = await AsyncStorage.getItem(STORAGE_USERS_KEY);
       let registeredUsers: any[] = raw ? JSON.parse(raw) : [];
@@ -194,9 +214,9 @@ export const authService = {
       }
 
       // Check for matching registered user or shop registered in developer portal
-      let foundUser = registeredUsers.find(u => u.email && u.email.toLowerCase() === email);
-      const shopStore = useShopStore.getState();
-      let matchedShop = shopStore.shops.find(s => s.owner_email?.toLowerCase() === email);
+      const currentShops = useShopStore.getState().shops;
+      let matchedShop = currentShops.find(s => s.owner_email && s.owner_email.trim().toLowerCase() === email);
+      let foundUser = registeredUsers.find(u => u.email && u.email.trim().toLowerCase() === email);
 
       if (!foundUser && matchedShop) {
         foundUser = {

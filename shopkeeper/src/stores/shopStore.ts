@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Shop, Product, Category, Order, OrderStatus } from '../types';
-import { realtimeSync, getSyncServerUrl } from '../services/realtimeSync';
+import { realtimeSync } from '../services/realtimeSync';
 
 export const DEFAULT_CATEGORIES: Category[] = [
   { id: 'c1', name: 'Fruits & Veggies', icon: 'nutrition-outline', sort_order: 1 },
@@ -73,10 +73,9 @@ export const useShopStore = create<ShopState>((set, get) => ({
       let parsedProducts: Product[] = storedProducts ? JSON.parse(storedProducts) : [];
       let parsedOrders: Order[] = storedOrders ? JSON.parse(storedOrders) : [];
 
-      // Fetch latest snapshot from Shared Sync Bridge Server
+      // Fetch latest snapshot from Shared Sync Bridge Server (Port 5000)
       try {
-        const syncUrl = getSyncServerUrl();
-        const syncRes = await fetch(`${syncUrl}/api/sync`);
+        const syncRes = await fetch('http://localhost:5000/api/sync');
         if (syncRes.ok) {
           const serverDb = await syncRes.json();
           if (serverDb && Array.isArray(serverDb.shops) && serverDb.shops.length > 0) {
@@ -87,7 +86,7 @@ export const useShopStore = create<ShopState>((set, get) => ({
             AsyncStorage.setItem(STORAGE_KEY_PRODUCTS, JSON.stringify(parsedProducts)).catch(() => {});
             AsyncStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(parsedOrders)).catch(() => {});
           } else if (parsedShops.length > 0 && (!serverDb.shops || serverDb.shops.length === 0)) {
-            fetch(`${syncUrl}/api/sync`, {
+            fetch('http://localhost:5000/api/sync', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -145,6 +144,7 @@ export const useShopStore = create<ShopState>((set, get) => ({
       rating: shopData.rating || 5.0,
       rating_count: shopData.rating_count || 1,
       tags: shopData.tags || ['Groceries', 'Local Store', 'Fast Delivery'],
+      ...((shopData as any).password ? { password: (shopData as any).password } : { password: 'store123' }),
     };
 
     const updatedShops = [newShop, ...get().shops];
@@ -228,40 +228,7 @@ export const useShopStore = create<ShopState>((set, get) => ({
 
   addProduct: (productData) => {
     const newId = `prod_${Date.now()}`;
-    let targetShopId = productData.shop_id || get().activeShopkeeperShopId || (get().shops.length > 0 ? get().shops[0].id : '');
-    let currentShops = get().shops;
-
-    if (!targetShopId || currentShops.length === 0) {
-      const defaultShop: Shop = {
-        id: 'shop_demo_1',
-        owner_id: 'owner_demo_1',
-        owner_email: 'srisai.kirana@example.com',
-        name: 'Sri Sai Kirana & General Store',
-        description: 'Fresh Atta, Dal, Oils, Grains & Daily Spices',
-        address: 'Road No. 12, Banjara Hills, Hyderabad',
-        latitude: 17.4142,
-        longitude: 78.4335,
-        phone: '9848012345',
-        is_active: true,
-        isOpen: true,
-        opening_time: '06:30:00',
-        closing_time: '23:00:00',
-        delivery_radius_km: 5,
-        min_order_amount: 50,
-        delivery_fee: 0,
-        created_at: new Date().toISOString(),
-        cover_image_url: 'https://images.unsplash.com/photo-1578916171728-46686eac8d58?auto=format&fit=crop&w=600&q=80',
-        logo_url: 'https://images.unsplash.com/photo-1604719312566-8912e9227c6a?auto=format&fit=crop&w=200&q=80',
-        rating: 4.9,
-        rating_count: 840,
-        tags: ['Kirana', 'Atta & Dal', 'Oils', 'Spices'],
-      };
-      targetShopId = defaultShop.id;
-      currentShops = [defaultShop];
-      set({ shops: currentShops, activeShopkeeperShopId: targetShopId });
-      AsyncStorage.setItem(STORAGE_KEY_SHOPS, JSON.stringify(currentShops)).catch(() => {});
-    }
-
+    const targetShopId = productData.shop_id || get().activeShopkeeperShopId || (get().shops.length > 0 ? get().shops[0].id : '');
     const newProduct: Product = {
       id: newId,
       shop_id: targetShopId,
@@ -328,8 +295,6 @@ export const useShopStore = create<ShopState>((set, get) => ({
     const newOrder: Order = {
       id: newId,
       customer_id: orderData.customer_id || 'cust_1',
-      customer_name: orderData.customer_name || 'Customer',
-      customer_phone: orderData.customer_phone || '',
       shop_id: orderData.shop_id || '',
       status: 'pending',
       subtotal: orderData.subtotal ?? 0,
@@ -338,11 +303,8 @@ export const useShopStore = create<ShopState>((set, get) => ({
       delivery_address: orderData.delivery_address || '',
       delivery_lat: orderData.delivery_lat || 17.4142,
       delivery_lng: orderData.delivery_lng || 78.4335,
-      payment_method: orderData.payment_method || 'cod',
-      payment_status: orderData.payment_status || 'pending',
-      payment_id: orderData.payment_id,
-      payment_time: orderData.payment_time,
-      paid_amount: orderData.paid_amount,
+      payment_method: 'cod',
+      payment_status: 'pending',
       notes: orderData.notes,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),

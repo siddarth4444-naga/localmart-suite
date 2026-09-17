@@ -7,11 +7,10 @@ import { formatDistance, getEstimatedTime } from '../lib/utils';
 interface ShopCardProps {
   shop: Shop;
   distance: number;
-  isNearest?: boolean;
   onPress: () => void;
 }
 
-export default function ShopCard({ shop, distance, isNearest, onPress }: ShopCardProps) {
+export default function ShopCard({ shop, distance, onPress }: ShopCardProps) {
   const estTime = getEstimatedTime(distance);
   const formattedDist = formatDistance(distance);
   const isOpen = shop.isOpen ?? shop.is_active;
@@ -34,18 +33,11 @@ export default function ShopCard({ shop, distance, isNearest, onPress }: ShopCar
 
         {/* Top Badges */}
         <View style={styles.badgeRow}>
-          {/* Nearest store badge */}
-          {isNearest ? (
-            <View style={styles.nearestBadge}>
-              <Ionicons name="location" size={12} color="#FFFFFF" />
-              <Text style={styles.nearestBadgeText}>NEAREST STORE</Text>
-            </View>
-          ) : (
-            <View style={styles.deliveryTimePill}>
-              <Ionicons name="flash" size={13} color="#D97706" />
-              <Text style={styles.deliveryTimeText}>{estTime.toUpperCase()}</Text>
-            </View>
-          )}
+          {/* Fast Delivery Pill */}
+          <View style={styles.deliveryTimePill}>
+            <Ionicons name="flash" size={13} color="#D97706" />
+            <Text style={styles.deliveryTimeText}>{estTime.toUpperCase()}</Text>
+          </View>
 
           {/* 24/7 Badge */}
           {(shop.is_24_hours || shop.opening_time === '24 Hours') && (
@@ -87,27 +79,14 @@ export default function ShopCard({ shop, distance, isNearest, onPress }: ShopCar
 
       {/* Details Container */}
       <View style={styles.detailsContainer}>
-        {/* Shop Name */}
+        {/* Title & Distance Highlight */}
         <View style={styles.titleRow}>
           <Text style={styles.shopName} numberOfLines={1}>{shop.name}</Text>
         </View>
 
-        {/* PROMINENT DISTANCE BANNER DIRECTLY BELOW SHOP NAME */}
-        <View style={styles.distanceRowBelowTitle}>
-          <View style={styles.distanceBadge}>
-            <Ionicons name="navigate" size={13} color="#059669" />
-            <Text style={styles.distanceTextHighlight}>{formattedDist} away</Text>
-          </View>
-          <Text style={styles.dotSeparator}>•</Text>
-          <View style={styles.timeBadge}>
-            <Ionicons name="flash" size={12} color="#D97706" />
-            <Text style={styles.timeTextHighlight}>{estTime} delivery</Text>
-          </View>
-        </View>
-
         {/* Address / Description */}
         <Text style={styles.shopAddress} numberOfLines={1}>
-          📍 {shop.address || shop.description}
+          {shop.address || shop.description}
         </Text>
 
         {/* Tags Pill Row */}
@@ -126,13 +105,20 @@ export default function ShopCard({ shop, distance, isNearest, onPress }: ShopCar
 
         {/* Bottom Distance & Delivery Info Row */}
         <View style={styles.footerRow}>
+          <View style={styles.distanceBadge}>
+            <Ionicons name="navigate" size={13} color="#059669" />
+            <Text style={styles.distanceHighlight}>{formattedDist} away</Text>
+          </View>
+
+          <View style={styles.dot} />
+
           <View style={styles.feeBadge}>
             <Ionicons name="bicycle" size={14} color="#4B5563" />
             <Text style={styles.feeText}>
               {shop.delivery_fee === 0 ? (
-                <Text style={{ color: '#059669', fontWeight: '700' }}>Free Delivery</Text>
+                <Text style={{ color: '#059669', fontWeight: '700' }}>Free</Text>
               ) : (
-                `Delivery: ₹${shop.delivery_fee}`
+                `₹${shop.delivery_fee}`
               )}
             </Text>
           </View>
@@ -145,7 +131,7 @@ export default function ShopCard({ shop, distance, isNearest, onPress }: ShopCar
 
           {/* Action Arrow */}
           <View style={styles.arrowIcon}>
-            <Ionicons name="chevron-forward-circle" size={22} color="#10B981" />
+            <Ionicons name="chevron-forward-circle" size={20} color="#10B981" />
           </View>
         </View>
       </View>
@@ -158,28 +144,32 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     marginBottom: 16,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: '#F3F4F6',
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
   },
   imageWrapper: {
-    height: 145,
     width: '100%',
+    height: 140,
+    backgroundColor: '#E5E7EB',
     position: 'relative',
-    backgroundColor: '#F1F5F9',
   },
   coverImage: {
     width: '100%',
     height: '100%',
   },
   imageOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.12)',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.12)',
   },
   badgeRow: {
     position: 'absolute',
@@ -190,10 +180,27 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  nearestBadge: {
+  deliveryTimePill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+    elevation: 2,
+    gap: 3,
+  },
+  deliveryTimeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#92400E',
+    letterSpacing: 0.4,
+  },
+  twentyFourSevenBadge: {
     backgroundColor: '#059669',
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -202,99 +209,74 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.2,
     shadowRadius: 2,
-  },
-  nearestBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: '900',
-    letterSpacing: 0.5,
-  },
-  deliveryTimePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.15,
-    shadowRadius: 2,
-  },
-  deliveryTimeText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#B45309',
-  },
-  twentyFourSevenBadge: {
-    backgroundColor: '#1E293B',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
+    elevation: 2,
   },
   twentyFourSevenText: {
-    color: '#34D399',
     fontSize: 10,
     fontWeight: '900',
+    color: '#FFFFFF',
     letterSpacing: 0.5,
   },
   ratingBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 7,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
+    gap: 3,
   },
   ratingText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#1E293B',
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1F2937',
   },
   ratingCount: {
     fontSize: 10,
-    color: '#64748B',
+    color: '#6B7280',
   },
   freeDeliveryBanner: {
     position: 'absolute',
-    bottom: 10,
+    bottom: 8,
     left: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#ECFDF5',
+    backgroundColor: '#D1FAE5',
     paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingVertical: 3,
     borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#A7F3D0',
+    gap: 4,
   },
   freeDeliveryText: {
     fontSize: 10,
     fontWeight: '800',
     color: '#065F46',
+    letterSpacing: 0.3,
   },
   closedOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(15, 23, 42, 0.7)',
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(17, 24, 39, 0.7)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   closedPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#FEE2E2',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
+    gap: 6,
   },
   closedText: {
-    color: '#EF4444',
-    fontSize: 12,
+    color: '#B91C1C',
     fontWeight: '800',
+    fontSize: 12,
+    letterSpacing: 0.5,
   },
   detailsContainer: {
     padding: 14,
@@ -303,108 +285,80 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 4,
   },
   shopName: {
     fontSize: 16,
-    fontWeight: '800',
-    color: '#0F172A',
+    fontWeight: '700',
+    color: '#111827',
     flex: 1,
   },
-  distanceRowBelowTitle: {
+  shopAddress: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginBottom: 8,
+  },
+  tagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 10,
+  },
+  tagPill: {
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  tagText: {
+    fontSize: 11,
+    color: '#4B5563',
+    fontWeight: '500',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#F3F4F6',
+    marginVertical: 8,
+  },
+  footerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginTop: 4,
-    marginBottom: 4,
+    justifyContent: 'flex-start',
   },
   distanceBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
     backgroundColor: '#ECFDF5',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#A7F3D0',
-  },
-  distanceTextHighlight: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#047857',
-  },
-  dotSeparator: {
-    color: '#94A3B8',
-    fontSize: 12,
-  },
-  timeBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    backgroundColor: '#FEF3C7',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: '#FDE68A',
-  },
-  timeTextHighlight: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#B45309',
-  },
-  shopAddress: {
-    fontSize: 12,
-    color: '#64748B',
-    marginTop: 2,
-  },
-  tagRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 8,
-  },
-  tagPill: {
-    backgroundColor: '#F1F5F9',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
     borderRadius: 6,
   },
-  tagText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#475569',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#F1F5F9',
-    marginVertical: 10,
-  },
-  footerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  distanceHighlight: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#065F46',
   },
   feeBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 3,
   },
   feeText: {
     fontSize: 12,
-    color: '#475569',
-    fontWeight: '600',
+    color: '#4B5563',
+    fontWeight: '500',
   },
   dot: {
     width: 3,
     height: 3,
-    borderRadius: 1.5,
-    backgroundColor: '#CBD5E1',
+    borderRadius: 2,
+    backgroundColor: '#D1D5DB',
+    marginHorizontal: 8,
   },
   minOrderText: {
     fontSize: 12,
-    color: '#64748B',
-    fontWeight: '500',
+    color: '#6B7280',
   },
   arrowIcon: {
     marginLeft: 'auto',

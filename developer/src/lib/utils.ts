@@ -1,5 +1,3 @@
-import { Linking, Platform, Alert } from 'react-native';
-
 // Calculate distance between two coordinates using Haversine formula
 export function calculateDistance(
   lat1: number,
@@ -52,50 +50,12 @@ export function getEstimatedTime(km: number): string {
 export function getOrderStatusInfo(status: string): { label: string; color: string; badge: string } {
   const statusMap: Record<string, { label: string; color: string; badge: string }> = {
     pending: { label: 'Processing (Waiting for Shop)', color: '#F59E0B', badge: '⏳ Processing' },
-    accepted: { label: 'Order Accepted by Shop', color: '#10B981', badge: '✅ Accepted' },
+    accepted: { label: 'Order Accepted', color: '#10B981', badge: '✅ Accepted' },
     preparing: { label: 'Preparing Items', color: '#8B5CF6', badge: '👨‍🍳 Preparing' },
-    ready: { label: 'Ready for Pickup', color: '#06B6D4', badge: '📦 Ready for Pickup' },
-    delivery_accepted: { label: 'Delivery Guy Accepted Order', color: '#0284C7', badge: '🛵 Delivery Guy Assigned' },
-    picked_up: { label: 'Picked Up from Store', color: '#3B82F6', badge: '🚴 Order Picked Up' },
-    out_for_delivery: { label: 'Out for Delivery (On the Way)', color: '#3B82F6', badge: '🚴 Out for Delivery' },
-    delivered: { label: 'Delivered Successfully', color: '#059669', badge: '🎉 Delivered' },
+    ready: { label: 'Ready for Pickup / Delivery', color: '#06B6D4', badge: '📦 Ready' },
+    out_for_delivery: { label: 'Out for Delivery', color: '#3B82F6', badge: '🚴 Out for Delivery' },
+    delivered: { label: 'Delivered', color: '#059669', badge: '🎉 Delivered' },
     cancelled: { label: 'Cancelled', color: '#EF4444', badge: '❌ Cancelled' },
   };
   return statusMap[status] || { label: status, color: '#6B7280', badge: status };
-}
-
-/**
- * Open Turn-by-Turn Navigation directly in Google Maps
- */
-export function openGoogleMapsDirections(lat?: number, lng?: number, address?: string, label?: string) {
-  let url = '';
-  if (lat && lng && !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) {
-    url = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
-  } else if (address) {
-    url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`;
-  } else {
-    url = 'https://www.google.com/maps';
-  }
-
-  if (Platform.OS === 'web' && typeof window !== 'undefined') {
-    window.open(url, '_blank');
-  } else {
-    Linking.openURL(url).catch(() => {
-      Alert.alert('Navigation Error', `Unable to open Google Maps for ${label || 'location'}.`);
-    });
-  }
-}
-
-/**
- * Open Phone Call
- */
-export function openPhoneCall(phoneNumber: string, contactName: string) {
-  const cleanNumber = phoneNumber.replace(/[^0-9+]/g, '');
-  if (Platform.OS === 'web' && typeof window !== 'undefined') {
-    window.alert(`Calling ${contactName}: ${phoneNumber}`);
-  } else {
-    Linking.openURL(`tel:${cleanNumber}`).catch(() => {
-      Alert.alert('Phone Call', `Contact ${contactName} at ${phoneNumber}`);
-    });
-  }
 }
