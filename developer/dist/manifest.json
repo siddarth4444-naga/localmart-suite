@@ -1,0 +1,29 @@
+{
+  "short_name": "Admin Console",
+  "name": "LocalMart - Developer & Admin Console",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    },
+    {
+      "src": "/_expo/static/images/icon.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/_expo/static/images/icon.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0F172A",
+  "theme_color": "#6366F1",
+  "display": "standalone",
+  "orientation": "portrait",
+  "scope": "/"
+}

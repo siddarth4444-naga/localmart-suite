@@ -203,6 +203,27 @@ export const realtimeSync = {
     const productsChanged = snapshot.products !== undefined && JSON.stringify(snapshot.products) !== JSON.stringify(currentState.products);
     const ordersChanged = snapshot.orders !== undefined && JSON.stringify(snapshot.orders) !== JSON.stringify(currentState.orders);
 
+    if (ordersChanged && snapshot.orders && currentState.orders.length > 0) {
+      try {
+        const { useNotificationStore } = require('./notificationService');
+        snapshot.orders.forEach((newOrder) => {
+          const oldOrder = currentState.orders.find((o) => o.id === newOrder.id);
+          if (newOrder.status === 'ready' && (!oldOrder || oldOrder.status !== 'ready')) {
+            const shop = currentState.shops.find((s) => s.id === newOrder.shop_id);
+            const shopName = shop?.name || 'Local Grocery Store';
+
+            useNotificationStore.getState().showNotification({
+              title: '🛵 NEW PICKUP READY!',
+              message: `Order #${newOrder.id.slice(-6).toUpperCase()} is packed & ready for pickup at ${shopName} (Earn ₹35+). Tap to accept!`,
+              type: 'delivery',
+              orderId: newOrder.id,
+              actionLabel: 'Accept Pickup',
+            });
+          }
+        });
+      } catch (e) {}
+    }
+
     if (shopsChanged || productsChanged || ordersChanged) {
       useShopStore.setState({
         ...(snapshot.shops ? { shops: snapshot.shops } : {}),

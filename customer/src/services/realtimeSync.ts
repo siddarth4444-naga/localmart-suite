@@ -203,6 +203,48 @@ export const realtimeSync = {
     const productsChanged = snapshot.products !== undefined && JSON.stringify(snapshot.products) !== JSON.stringify(currentState.products);
     const ordersChanged = snapshot.orders !== undefined && JSON.stringify(snapshot.orders) !== JSON.stringify(currentState.orders);
 
+    if (ordersChanged && snapshot.orders && currentState.orders.length > 0) {
+      try {
+        const { useNotificationStore } = require('./notificationService');
+        snapshot.orders.forEach((newOrder) => {
+          const oldOrder = currentState.orders.find((o) => o.id === newOrder.id);
+          if (oldOrder && oldOrder.status !== newOrder.status) {
+            let title = '📦 Order Update';
+            let message = `Order #${newOrder.id.slice(-6).toUpperCase()} status changed to ${newOrder.status}`;
+            let type: any = 'order';
+
+            if (newOrder.status === 'accepted') {
+              title = '✅ Store Accepted Your Order!';
+              message = 'The shopkeeper is currently packing your fresh items.';
+            } else if (newOrder.status === 'ready') {
+              title = '🛍️ Order Packed & Ready!';
+              message = 'Your order is packed and awaiting delivery partner pickup.';
+            } else if (newOrder.status === 'delivery_accepted') {
+              title = '🛵 Delivery Partner Assigned!';
+              message = `${newOrder.rider?.name || 'A rider'} is on the way to collect your order.`;
+              type = 'delivery';
+            } else if (newOrder.status === 'picked_up' || newOrder.status === 'out_for_delivery') {
+              title = '🚀 Out for Delivery!';
+              message = 'Your groceries are on the way to your delivery address.';
+              type = 'delivery';
+            } else if (newOrder.status === 'delivered') {
+              title = '🎉 Order Delivered!';
+              message = 'Your order has been delivered. Thank you for shopping with LocalMart!';
+              type = 'success';
+            }
+
+            useNotificationStore.getState().showNotification({
+              title,
+              message,
+              type,
+              orderId: newOrder.id,
+              actionLabel: 'View Order',
+            });
+          }
+        });
+      } catch (e) {}
+    }
+
     if (shopsChanged || productsChanged || ordersChanged) {
       useShopStore.setState({
         ...(snapshot.shops ? { shops: snapshot.shops } : {}),

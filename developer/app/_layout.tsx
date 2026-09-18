@@ -10,6 +10,9 @@ import { realtimeSync } from '../src/services/realtimeSync';
 import { useShopStore } from '../src/stores/shopStore';
 import { useAuthStore } from '../src/stores/authStore';
 
+import { AppNotificationBanner } from '../src/components/AppNotificationBanner';
+import { InstallAppBanner } from '../src/components/InstallAppBanner';
+
 // Prevent splash screen auto-hiding with safe fallback
 SplashScreen.preventAutoHideAsync().catch(() => {
   /* reload / already hidden */
@@ -32,6 +35,8 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
         <StatusBar style="dark" />
+        <InstallAppBanner />
+        <AppNotificationBanner />
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="index" />
           <Stack.Screen name="(auth)" />

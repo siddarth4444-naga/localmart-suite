@@ -203,6 +203,46 @@ export const realtimeSync = {
     const productsChanged = snapshot.products !== undefined && JSON.stringify(snapshot.products) !== JSON.stringify(currentState.products);
     const ordersChanged = snapshot.orders !== undefined && JSON.stringify(snapshot.orders) !== JSON.stringify(currentState.orders);
 
+    if (ordersChanged && snapshot.orders && currentState.orders.length > 0) {
+      try {
+        const { useNotificationStore } = require('./notificationService');
+        const activeShopId = currentState.activeShopkeeperShopId;
+
+        snapshot.orders.forEach((newOrder) => {
+          const oldOrder = currentState.orders.find((o) => o.id === newOrder.id);
+          // Check if it belongs to this store
+          const isMyShop = !activeShopId || newOrder.shop_id === activeShopId;
+
+          if (!oldOrder && isMyShop) {
+            // New incoming customer order!
+            useNotificationStore.getState().showNotification({
+              title: '🔔 NEW CUSTOMER ORDER!',
+              message: `Order #${newOrder.id.slice(-6).toUpperCase()} received: ₹${newOrder.total || 0} (${newOrder.items?.length || 1} items). Tap to accept and prepare!`,
+              type: 'order',
+              orderId: newOrder.id,
+              actionLabel: 'Open Order',
+            });
+          } else if (oldOrder && oldOrder.status !== newOrder.status && isMyShop) {
+            if (newOrder.status === 'delivery_accepted') {
+              useNotificationStore.getState().showNotification({
+                title: '🛵 Rider Assigned to Order',
+                message: `${newOrder.rider?.name || 'Rider'} is arriving at your store for pickup.`,
+                type: 'delivery',
+                orderId: newOrder.id,
+              });
+            } else if (newOrder.status === 'delivered') {
+              useNotificationStore.getState().showNotification({
+                title: '🎉 Order Completed & Delivered',
+                message: `Order #${newOrder.id.slice(-6).toUpperCase()} has been delivered successfully!`,
+                type: 'success',
+                orderId: newOrder.id,
+              });
+            }
+          }
+        });
+      } catch (e) {}
+    }
+
     if (shopsChanged || productsChanged || ordersChanged) {
       useShopStore.setState({
         ...(snapshot.shops ? { shops: snapshot.shops } : {}),
