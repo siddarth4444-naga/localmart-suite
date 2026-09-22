@@ -414,6 +414,40 @@
   ],
   "orders": [
     {
+      "id": "ord_1790094452141",
+      "customer_id": "u_cust_1788886617971",
+      "shop_id": "shop_1789625170165",
+      "status": "delivered",
+      "subtotal": 360,
+      "delivery_fee": 0,
+      "total": 365,
+      "delivery_address": "36/, Banjara Hills, Hyderabad - 500034",
+      "delivery_lat": 17.4142,
+      "delivery_lng": 78.4335,
+      "payment_method": "cod",
+      "payment_status": "paid",
+      "notes": "Delivery Note: Leave at door",
+      "created_at": "2026-09-22T16:27:32.141Z",
+      "updated_at": "2026-09-22T16:28:40.493Z",
+      "items": [
+        {
+          "id": "item_1790094452141_0",
+          "order_id": "",
+          "product_id": "prod_1789628093423",
+          "product_name": "milk",
+          "product_price": 40,
+          "product_image_url": "https://images.unsplash.com/photo-1571771894821-ce9b6c11b08e?auto=format&fit=crop&w=400&q=80",
+          "quantity": 9,
+          "total": 360
+        }
+      ],
+      "delivery_partner": {
+        "id": "dp_ravi_kumar",
+        "name": "Ravi Kumar (Rider)",
+        "phone": "+91 98480 99887"
+      }
+    },
+    {
       "id": "ord_1789628593293",
       "customer_id": "u_cust_1788886617971",
       "customer_name": "ramu",
@@ -1151,5 +1185,5 @@
       "delivered_at": "2026-09-08T11:51:21.963Z"
     }
   ],
-  "lastUpdated": 1789636505291
+  "lastUpdated": 1790094520497
 }
