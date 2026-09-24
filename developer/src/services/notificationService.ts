@@ -64,7 +64,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
 export const notificationService = {
   playChime(type: 'order' | 'delivery' | 'shop' | 'alert' | 'success' = 'alert') {
     try {
-      if (typeof window === 'undefined') return;
+      if (Platform.OS !== 'web' || typeof window === 'undefined') return;
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
       if (!AudioCtx) return;
 
@@ -124,3 +124,4 @@ export const notificationService = {
     } catch (e) {}
   },
 };
+

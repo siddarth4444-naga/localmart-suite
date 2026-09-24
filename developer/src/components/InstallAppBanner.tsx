@@ -18,32 +18,36 @@ export const InstallAppBanner: React.FC = () => {
   const { showNotification } = useNotificationStore();
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
 
-    const isStandalone =
-      window.matchMedia('(display-mode: standalone)').matches ||
-      (window.navigator as any).standalone === true;
+    try {
+      const isStandalone =
+        (typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches) ||
+        (window.navigator as any)?.standalone === true;
 
-    if (isStandalone) {
-      setIsInstalled(true);
-      return;
-    }
+      if (isStandalone) {
+        setIsInstalled(true);
+        return;
+      }
 
-    const handleBeforeInstall = (e: any) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-    };
+      const handleBeforeInstall = (e: any) => {
+        e.preventDefault();
+        setDeferredPrompt(e);
+      };
 
-    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+      window.addEventListener('beforeinstallprompt', handleBeforeInstall);
 
-    setTimeout(() => {
-      notificationService.requestPermission();
-    }, 2000);
+      setTimeout(() => {
+        notificationService.requestPermission();
+      }, 2000);
 
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
-    };
+      return () => {
+        window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+      };
+    } catch (e) {}
   }, []);
+
+  if (Platform.OS !== 'web') return null;
 
   const handleInstallClick = async () => {
     if (deferredPrompt) {
@@ -151,3 +155,4 @@ const styles = StyleSheet.create({
     padding: 4,
   },
 });
+
