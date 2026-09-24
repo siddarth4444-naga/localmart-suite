@@ -1,5 +1,16 @@
 import React, { useEffect, useCallback, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform, Modal } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+  Platform,
+  Modal,
+  FlatList,
+  TextInput,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
 
@@ -19,7 +30,11 @@ export default function ShopkeeperDashboardScreen() {
     updateOrderStatus 
   } = useShopStore();
   const { user, logout } = useAuthStore();
+
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [showEarningsModal, setShowEarningsModal] = useState(false);
+  const [earningsTimeFilter, setEarningsTimeFilter] = useState<'all' | 'today' | 'week' | 'delivered'>('all');
+  const [earningsSearchQuery, setEarningsSearchQuery] = useState('');
 
   const handleLogout = () => {
     const doLogout = () => {
@@ -73,6 +88,36 @@ export default function ShopkeeperDashboardScreen() {
   const todayDelivered = deliveredOrders.filter(o => new Date(o.created_at).toDateString() === new Date().toDateString());
   const todayRevenue = todayDelivered.reduce((acc, o) => acc + (o.total || 0), 0);
   const pipelineAmount = activeOrders.reduce((acc, o) => acc + (o.total || 0), 0);
+
+  // Filtered orders inside Earnings Modal
+  const getModalEarningsOrders = () => {
+    let list = shopOrders;
+    if (earningsTimeFilter === 'today') {
+      list = shopOrders.filter(o => new Date(o.created_at).toDateString() === new Date().toDateString());
+    } else if (earningsTimeFilter === 'week') {
+      const now = Date.now();
+      const oneWeek = 7 * 24 * 60 * 60 * 1000;
+      list = shopOrders.filter(o => (now - new Date(o.created_at).getTime()) <= oneWeek);
+    } else if (earningsTimeFilter === 'delivered') {
+      list = deliveredOrders;
+    }
+
+    if (earningsSearchQuery.trim()) {
+      const q = earningsSearchQuery.toLowerCase().trim();
+      list = list.filter(o => 
+        o.id.toLowerCase().includes(q) ||
+        (o.customer_name && o.customer_name.toLowerCase().includes(q)) ||
+        (o.customer_phone && o.customer_phone.includes(q))
+      );
+    }
+
+    return list;
+  };
+
+  const modalOrders = getModalEarningsOrders();
+  const modalEarningsSum = modalOrders
+    .filter(o => o.status !== 'cancelled')
+    .reduce((sum, o) => sum + (o.total || 0), 0);
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
@@ -132,11 +177,11 @@ export default function ShopkeeperDashboardScreen() {
         <Text style={styles.shopAddress}>📍 {activeShop?.address || 'Set your store location'}</Text>
       </View>
 
-      {/* 💰 PROMINENT DASHBOARD TOTAL EARNINGS BANNER */}
+      {/* 💰 PROMINENT DASHBOARD TOTAL EARNINGS BANNER (CLICKABLE TO VIEW ORDER HISTORY) */}
       <TouchableOpacity
         style={styles.revenueBannerCard}
         activeOpacity={0.88}
-        onPress={() => router.push('/(tabs)/orders' as any)}
+        onPress={() => setShowEarningsModal(true)}
       >
         <View style={styles.revenueBannerHeader}>
           <View style={styles.revenueBadgeRow}>
@@ -149,7 +194,7 @@ export default function ShopkeeperDashboardScreen() {
             </View>
           </View>
           <View style={styles.orderDetailBadge}>
-            <Text style={styles.orderDetailBadgeText}>Orders & Bill ➔</Text>
+            <Text style={styles.orderDetailBadgeText}>View Order History ➔</Text>
           </View>
         </View>
 
@@ -172,15 +217,22 @@ export default function ShopkeeperDashboardScreen() {
             <Text style={styles.revenueSubSub}>{activeOrders.length} active</Text>
           </View>
         </View>
+
+        <View style={styles.tapToViewHintRow}>
+          <Ionicons name="receipt-outline" size={13} color="#A7F3D0" />
+          <Text style={styles.tapToViewHintText}>
+            Tap anywhere on this card to view all order history & bill details ➔
+          </Text>
+        </View>
       </TouchableOpacity>
 
-      {/* 📊 UPDATED DASHBOARD STATS GRID (INCLUDES TOTAL AMOUNT EARNED) */}
+      {/* 📊 UPDATED DASHBOARD STATS GRID (6 INTERACTIVE TILES) */}
       <View style={styles.statsContainer}>
         {/* Stat 1: Total Amount Earned */}
         <TouchableOpacity 
           style={[styles.statCard, styles.statCardEarned]}
           activeOpacity={0.8}
-          onPress={() => router.push('/(tabs)/orders' as any)}
+          onPress={() => setShowEarningsModal(true)}
         >
           <View style={styles.statIconBadge}>
             <Ionicons name="cash" size={14} color="#059669" />
@@ -193,7 +245,7 @@ export default function ShopkeeperDashboardScreen() {
         <TouchableOpacity 
           style={styles.statCard}
           activeOpacity={0.8}
-          onPress={() => router.push('/(tabs)/orders' as any)}
+          onPress={() => setShowEarningsModal(true)}
         >
           <View style={[styles.statIconBadge, { backgroundColor: '#F1F5F9' }]}>
             <Ionicons name="receipt" size={14} color="#475569" />
@@ -234,7 +286,7 @@ export default function ShopkeeperDashboardScreen() {
         <TouchableOpacity 
           style={styles.statCard}
           activeOpacity={0.8}
-          onPress={() => router.push('/(tabs)/orders' as any)}
+          onPress={() => setShowEarningsModal(true)}
         >
           <View style={[styles.statIconBadge, { backgroundColor: '#DCFCE7' }]}>
             <Ionicons name="checkmark-done" size={14} color="#16A34A" />
@@ -287,8 +339,8 @@ export default function ShopkeeperDashboardScreen() {
       {/* Recent Orders Section */}
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Recent Orders ({shopOrders.length})</Text>
-        <TouchableOpacity onPress={() => router.push('/(tabs)/orders' as any)}>
-          <Text style={styles.seeAllText}>View All Orders ➔</Text>
+        <TouchableOpacity onPress={() => setShowEarningsModal(true)}>
+          <Text style={styles.seeAllText}>View All History ➔</Text>
         </TouchableOpacity>
       </View>
 
@@ -344,7 +396,7 @@ export default function ShopkeeperDashboardScreen() {
                   <Text style={styles.itemCount}>{order.items?.length || 1} items</Text>
                   <View style={{ alignItems: 'flex-end' }}>
                     <Text style={styles.totalAmount}>{formatPrice(order.total)}</Text>
-                    <Text style={styles.clickDetailsHint}>Tap for details ➔</Text>
+                    <Text style={styles.clickDetailsHint}>Tap for bill details ➔</Text>
                   </View>
                 </View>
 
@@ -399,7 +451,173 @@ export default function ShopkeeperDashboardScreen() {
         )}
       </View>
 
-      {/* 🧾 QUICK ORDER DETAILS MODAL FROM DASHBOARD */}
+      {/* ========================================================================= */}
+      {/* 📊 FULL ORDER HISTORY & EARNINGS BREAKDOWN MODAL                            */}
+      {/* ========================================================================= */}
+      <Modal
+        visible={showEarningsModal}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={() => setShowEarningsModal(false)}
+      >
+        <View style={styles.modalContainer}>
+          {/* Modal Header */}
+          <View style={styles.modalHeader}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <TouchableOpacity
+                style={styles.modalCloseBtn}
+                onPress={() => setShowEarningsModal(false)}
+              >
+                <Ionicons name="close" size={22} color="#0F172A" />
+              </TouchableOpacity>
+              <View>
+                <Text style={styles.modalHeaderTitle}>Store Order History & Earnings</Text>
+                <Text style={styles.modalHeaderSubtitle}>{activeShop?.name || 'My Store'}</Text>
+              </View>
+            </View>
+            <View style={styles.modalHeaderBadge}>
+              <Text style={styles.modalHeaderBadgeText}>{modalOrders.length} orders</Text>
+            </View>
+          </View>
+
+          {/* Revenue Summary Card */}
+          <View style={styles.modalSummaryCard}>
+            <View style={styles.modalSummaryTop}>
+              <View>
+                <Text style={styles.modalSummaryLabel}>
+                  {earningsTimeFilter === 'all' ? 'All-Time Revenue' : earningsTimeFilter === 'today' ? "Today's Revenue" : earningsTimeFilter === 'week' ? 'Last 7 Days' : 'Delivered Revenue'}
+                </Text>
+                <Text style={styles.modalSummaryAmount}>₹{modalEarningsSum.toFixed(0)}</Text>
+              </View>
+              <View style={styles.modalSummaryStatsCol}>
+                <View style={styles.statPill}>
+                  <Text style={styles.statPillText}>
+                    📦 {modalOrders.filter(o => o.status === 'delivered').length} Delivered
+                  </Text>
+                </View>
+                <View style={[styles.statPill, { backgroundColor: '#FEF3C7' }]}>
+                  <Text style={[styles.statPillText, { color: '#B45309' }]}>
+                    ⏳ {modalOrders.filter(o => o.status !== 'delivered' && o.status !== 'cancelled').length} Active
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Time Filter Tabs */}
+            <View style={styles.modalTimeFilterRow}>
+              {[
+                { id: 'all', label: 'All Orders' },
+                { id: 'today', label: 'Today' },
+                { id: 'week', label: 'This Week' },
+                { id: 'delivered', label: 'Delivered' },
+              ].map((filter) => (
+                <TouchableOpacity
+                  key={filter.id}
+                  style={[
+                    styles.modalTimeTab,
+                    earningsTimeFilter === filter.id && styles.modalTimeTabActive,
+                  ]}
+                  onPress={() => setEarningsTimeFilter(filter.id as any)}
+                >
+                  <Text
+                    style={[
+                      styles.modalTimeTabText,
+                      earningsTimeFilter === filter.id && styles.modalTimeTabTextActive,
+                    ]}
+                  >
+                    {filter.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Search bar inside History */}
+          <View style={styles.modalSearchContainer}>
+            <Ionicons name="search" size={16} color="#94A3B8" />
+            <TextInput
+              style={styles.modalSearchInput}
+              placeholder="Search by customer name, phone, or order #..."
+              placeholderTextColor="#94A3B8"
+              value={earningsSearchQuery}
+              onChangeText={setEarningsSearchQuery}
+            />
+            {earningsSearchQuery ? (
+              <TouchableOpacity onPress={() => setEarningsSearchQuery('')}>
+                <Ionicons name="close-circle" size={16} color="#94A3B8" />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+
+          {/* Orders History List */}
+          <FlatList
+            data={modalOrders}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.modalListContent}
+            ListEmptyComponent={() => (
+              <View style={styles.modalEmptyState}>
+                <Ionicons name="receipt-outline" size={48} color="#CBD5E1" />
+                <Text style={styles.modalEmptyTitle}>No orders found</Text>
+                <Text style={styles.modalEmptySub}>Orders placed in this time period will appear here with full pricing details.</Text>
+              </View>
+            )}
+            renderItem={({ item }) => {
+              const statusInfo = getOrderStatusInfo(item.status);
+              const itemsCount = item.items?.reduce((cnt, it) => cnt + it.quantity, 0) || item.items?.length || 1;
+
+              return (
+                <TouchableOpacity
+                  style={styles.earningOrderCard}
+                  activeOpacity={0.85}
+                  onPress={() => setSelectedOrder(item)}
+                >
+                  <View style={styles.earningOrderTop}>
+                    <View>
+                      <Text style={styles.earningOrderId}>Order #{item.id.slice(-6).toUpperCase()}</Text>
+                      <Text style={styles.earningOrderDate}>
+                        {new Date(item.created_at).toLocaleDateString()} at {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </Text>
+                    </View>
+                    <View style={styles.earningOrderPriceBox}>
+                      <Text style={styles.earningOrderAmount}>₹{item.total || 0}</Text>
+                      <View style={[styles.miniStatusBadge, { backgroundColor: statusInfo.color + '15' }]}>
+                        <Text style={[styles.miniStatusText, { color: statusInfo.color }]}>
+                          {item.status.toUpperCase()}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  <View style={styles.earningOrderCustomerRow}>
+                    <Ionicons name="person-circle-outline" size={16} color="#64748B" />
+                    <Text style={styles.earningCustomerText}>
+                      {item.customer_name || 'Customer'} • {item.customer_phone || '+91 98480 12345'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.earningOrderItemsSummary}>
+                    <Text style={styles.earningItemsCountText}>
+                      🛒 {itemsCount} items: {item.items?.map(it => `${it.quantity}x ${it.product_name}`).join(', ') || 'Grocery items'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.earningOrderFooter}>
+                    <Text style={styles.earningPaymentMethod}>
+                      {item.payment_method === 'online' || item.payment_status === 'paid' ? '💳 Prepaid Online' : item.payment_method === 'upi_on_delivery' ? '📱 UPI QR' : '💵 Cash on Delivery'}
+                    </Text>
+                    <View style={styles.earningViewDetailBtn}>
+                      <Text style={styles.earningViewDetailText}>Click for Bill & Details</Text>
+                      <Ionicons name="arrow-forward" size={13} color="#10B981" />
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            }}
+          />
+        </View>
+      </Modal>
+
+      {/* 🧾 QUICK ORDER DETAILS MODAL */}
       <Modal
         visible={!!selectedOrder}
         animationType="fade"
@@ -443,7 +661,18 @@ export default function ShopkeeperDashboardScreen() {
                 <View style={styles.detailSection}>
                   <Text style={styles.detailSectionTitle}>Customer & Delivery Info</Text>
                   <View style={styles.detailBox}>
-                    <Text style={styles.detailCustomerName}>{selectedOrder.customer_name || 'Customer'}</Text>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={styles.detailCustomerName}>{selectedOrder.customer_name || 'Customer'}</Text>
+                      {selectedOrder.customer_phone ? (
+                        <TouchableOpacity
+                          style={styles.modalCallBtn}
+                          onPress={() => openPhoneCall(selectedOrder.customer_phone || '', selectedOrder.customer_name || 'Customer')}
+                        >
+                          <Ionicons name="call" size={12} color="#0284C7" />
+                          <Text style={styles.modalCallBtnText}>Call</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
                     <Text style={styles.detailCustomerPhone}>{selectedOrder.customer_phone || '+91 98480 12345'}</Text>
                     <Text style={styles.detailCustomerAddress}>{selectedOrder.delivery_address || 'Banjara Hills, Hyderabad'}</Text>
                   </View>
@@ -677,6 +906,21 @@ const styles = StyleSheet.create({
     color: '#6EE7B7',
     fontWeight: '600',
     marginTop: 1,
+  },
+  tapToViewHintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#065F46',
+    justifyContent: 'center',
+  },
+  tapToViewHintText: {
+    fontSize: 11,
+    color: '#A7F3D0',
+    fontWeight: '700',
   },
 
   /* 📊 STATS GRID (6 TILES) */
@@ -931,6 +1175,248 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
+  /* 📊 EARNINGS MODAL STYLES */
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  modalCloseBtn: {
+    padding: 6,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 20,
+  },
+  modalHeaderTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  modalHeaderSubtitle: {
+    fontSize: 12,
+    color: '#64748B',
+    fontWeight: '500',
+  },
+  modalHeaderBadge: {
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  modalHeaderBadgeText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#059669',
+  },
+  modalSummaryCard: {
+    margin: 14,
+    backgroundColor: '#0F172A',
+    borderRadius: 16,
+    padding: 16,
+  },
+  modalSummaryTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  modalSummaryLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#94A3B8',
+    textTransform: 'uppercase',
+  },
+  modalSummaryAmount: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: '#10B981',
+    marginTop: 2,
+  },
+  modalSummaryStatsCol: {
+    gap: 6,
+    alignItems: 'flex-end',
+  },
+  statPill: {
+    backgroundColor: '#064E3B',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  statPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#A7F3D0',
+  },
+  modalTimeFilterRow: {
+    flexDirection: 'row',
+    backgroundColor: '#1E293B',
+    borderRadius: 10,
+    padding: 3,
+    gap: 4,
+  },
+  modalTimeTab: {
+    flex: 1,
+    paddingVertical: 6,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  modalTimeTabActive: {
+    backgroundColor: '#10B981',
+  },
+  modalTimeTabText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#94A3B8',
+  },
+  modalTimeTabTextActive: {
+    color: '#FFFFFF',
+  },
+  modalSearchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 14,
+    marginBottom: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: 8,
+  },
+  modalSearchInput: {
+    flex: 1,
+    fontSize: 13,
+    color: '#0F172A',
+    padding: 0,
+  },
+  modalListContent: {
+    paddingHorizontal: 14,
+    paddingBottom: 30,
+    gap: 12,
+  },
+  modalEmptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 50,
+  },
+  modalEmptyTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#334155',
+    marginTop: 10,
+  },
+  modalEmptySub: {
+    fontSize: 12,
+    color: '#94A3B8',
+    textAlign: 'center',
+    marginTop: 4,
+    paddingHorizontal: 20,
+  },
+
+  /* EARNING ORDER ITEM */
+  earningOrderCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  earningOrderTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  earningOrderId: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  earningOrderDate: {
+    fontSize: 11,
+    color: '#94A3B8',
+    marginTop: 2,
+  },
+  earningOrderPriceBox: {
+    alignItems: 'flex-end',
+    gap: 3,
+  },
+  earningOrderAmount: {
+    fontSize: 17,
+    fontWeight: '900',
+    color: '#059669',
+  },
+  miniStatusBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  miniStatusText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  earningOrderCustomerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  earningCustomerText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  earningOrderItemsSummary: {
+    backgroundColor: '#F8FAFC',
+    padding: 8,
+    borderRadius: 8,
+    marginBottom: 10,
+  },
+  earningItemsCountText: {
+    fontSize: 12,
+    color: '#334155',
+    lineHeight: 16,
+  },
+  earningOrderFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+    paddingTop: 8,
+  },
+  earningPaymentMethod: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  earningViewDetailBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  earningViewDetailText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#10B981',
+  },
+
   /* 🧾 DETAIL MODAL */
   detailModalOverlay: {
     flex: 1,
@@ -1014,6 +1500,20 @@ const styles = StyleSheet.create({
     color: '#64748B',
     marginTop: 4,
     lineHeight: 16,
+  },
+  modalCallBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#E0F2FE',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  modalCallBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0284C7',
   },
   detailItemRow: {
     flexDirection: 'row',

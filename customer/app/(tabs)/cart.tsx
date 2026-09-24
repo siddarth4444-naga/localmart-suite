@@ -9,8 +9,8 @@ import {
   Alert,
   ActivityIndicator,
   TextInput,
+  Modal,
   Platform,
-  Modal
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,48 +20,8 @@ import { useCartStore } from '../../src/stores/cartStore';
 import { useLocationStore } from '../../src/stores/locationStore';
 import { useShopStore } from '../../src/stores/shopStore';
 import { useAuthStore } from '../../src/stores/authStore';
-import { formatPrice, calculateDistance, formatDistance, getEstimatedTime } from '../../src/lib/utils';
-
-interface PromoPreset {
-  code: string;
-  description: string;
-  type: 'percent' | 'flat' | 'free_delivery';
-  discountValue: number;
-  minOrder: number;
-  maxDiscount?: number;
-}
-
-const PROMO_PRESETS: PromoPreset[] = [
-  {
-    code: 'WELCOME50',
-    description: '50% OFF up to ₹100 on your neighborhood order',
-    type: 'percent',
-    discountValue: 50,
-    minOrder: 99,
-    maxDiscount: 100,
-  },
-  {
-    code: 'BLINKMART',
-    description: 'Flat ₹50 OFF on orders above ₹249',
-    type: 'flat',
-    discountValue: 50,
-    minOrder: 249,
-  },
-  {
-    code: 'FREEDEL',
-    description: '100% Free Doorstep Delivery',
-    type: 'free_delivery',
-    discountValue: 0,
-    minOrder: 50,
-  },
-];
-
-const DELIVERY_INSTRUCTIONS = [
-  { id: 'door', label: 'Leave at door', icon: 'home-outline' as const },
-  { id: 'bell', label: 'Ring bell', icon: 'notifications-outline' as const },
-  { id: 'call', label: 'Call upon arrival', icon: 'call-outline' as const },
-  { id: 'nocall', label: 'Avoid calling', icon: 'volume-mute-outline' as const },
-];
+import { formatPrice, calculateDistance, formatDistance, getEstimatedTime, getPaymentMethodInfo } from '../../src/lib/utils';
+import { PaymentMethod } from '../../src/types';
 
 export default function CartScreen() {
   const router = useRouter();
@@ -70,26 +30,17 @@ export default function CartScreen() {
   const { shops, addOrder } = useShopStore();
   const { user } = useAuthStore();
 
+  const [selectedPayment, setSelectedPayment] = useState<PaymentMethod>('phonepe');
   const [placingOrder, setPlacingOrder] = useState(false);
-  const [promoInput, setPromoInput] = useState('');
-  const [appliedPromo, setAppliedPromo] = useState<PromoPreset | null>(null);
-  const [promoError, setPromoError] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'online' | 'upi_on_delivery' | 'cod'>('online');
-  const [selectedInstruction, setSelectedInstruction] = useState<string>('door');
+  const [paymentModalVisible, setPaymentModalVisible] = useState(false);
+  const [paymentProcessingStage, setPaymentProcessingStage] = useState<'processing' | 'success'>('processing');
+  const [generatedTxnId, setGeneratedTxnId] = useState('');
 
-  // Payment Gateway Modal State
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [paymentTab, setPaymentTab] = useState<'upi' | 'card' | 'netbanking'>('upi');
-  const [selectedUpiApp, setSelectedUpiApp] = useState<'gpay' | 'phonepe' | 'paytm' | 'cred' | 'custom'>('gpay');
-  const [customUpiId, setCustomUpiId] = useState('');
-  const [cardNumber, setCardNumber] = useState('4532 8921 7840 9924');
-  const [cardExpiry, setCardExpiry] = useState('08/29');
-  const [cardCvv, setCardCvv] = useState('842');
-  const [cardHolder, setCardHolder] = useState(user?.name || 'Ramesh Kumar');
-  const [selectedBank, setSelectedBank] = useState('HDFC Bank');
-  const [gatewayProcessing, setGatewayProcessing] = useState(false);
-  const [gatewaySuccess, setGatewaySuccess] = useState(false);
-  const [createdPaymentId, setCreatedPaymentId] = useState('');
+  // Card details state
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardExpiry, setCardExpiry] = useState('');
+  const [cardCvv, setCardCvv] = useState('');
+  const [cardName, setCardName] = useState('');
 
   const cartItems = activeShopId ? (items.get(activeShopId) || []) : [];
   const activeShop = activeShopId ? shops.find(s => s.id === activeShopId) : null;
@@ -102,78 +53,52 @@ export default function CartScreen() {
     : 1.2;
 
   const subtotal = activeShopId ? getSubtotal(activeShopId) : 0;
-  let rawDeliveryFee = activeShop?.delivery_fee ?? 0;
-  
-  // Calculate discount
-  let discountAmount = 0;
-  if (appliedPromo && subtotal >= appliedPromo.minOrder) {
-    if (appliedPromo.type === 'percent') {
-      discountAmount = Math.min((subtotal * appliedPromo.discountValue) / 100, appliedPromo.maxDiscount || 100);
-    } else if (appliedPromo.type === 'flat') {
-      discountAmount = Math.min(appliedPromo.discountValue, subtotal);
-    } else if (appliedPromo.type === 'free_delivery') {
-      rawDeliveryFee = 0;
-      discountAmount = 0;
-    }
-  }
-
-  const deliveryFee = appliedPromo?.type === 'free_delivery' ? 0 : rawDeliveryFee;
+  const deliveryFee = activeShop?.delivery_fee ?? 0;
   const handlingFee = subtotal > 0 ? 5 : 0;
-  const total = Math.max(0, subtotal - discountAmount + deliveryFee + handlingFee);
+  const total = subtotal > 0 ? subtotal + deliveryFee + handlingFee : 0;
 
-  const handleApplyPromoCode = (codeToApply?: string) => {
-    const code = (codeToApply || promoInput).trim().toUpperCase();
-    setPromoError('');
-
-    if (!code) {
-      setPromoError('Please enter a valid promo code');
-      return;
-    }
-
-    const preset = PROMO_PRESETS.find(p => p.code === code);
-    if (!preset) {
-      setPromoError('Invalid coupon code. Try WELCOME50 or BLINKMART.');
-      return;
-    }
-
-    if (subtotal < preset.minOrder) {
-      setPromoError(`Minimum order amount of ₹${preset.minOrder} required for ${preset.code}.`);
-      return;
-    }
-
-    setAppliedPromo(preset);
-    setPromoInput(preset.code);
-    setPromoError('');
+  // Format Card Number (XXXX XXXX XXXX XXXX)
+  const handleCardNumberChange = (text: string) => {
+    const cleaned = text.replace(/\D/g, '').slice(0, 16);
+    const formatted = cleaned.match(/.{1,4}/g)?.join(' ') || cleaned;
+    setCardNumber(formatted);
   };
 
-  const handleRemovePromo = () => {
-    setAppliedPromo(null);
-    setPromoInput('');
-    setPromoError('');
+  // Format Expiry (MM/YY)
+  const handleExpiryChange = (text: string) => {
+    const cleaned = text.replace(/\D/g, '').slice(0, 4);
+    if (cleaned.length >= 2) {
+      setCardExpiry(`${cleaned.slice(0, 2)}/${cleaned.slice(2)}`);
+    } else {
+      setCardExpiry(cleaned);
+    }
   };
 
-  const executePlaceOrder = (isOnlinePaid = false, payId = '') => {
-    const finalPaymentMethod = isOnlinePaid ? 'online' : paymentMethod;
-    const finalPaymentStatus = isOnlinePaid ? 'paid' : 'pending';
-    const finalPaymentId = isOnlinePaid ? (payId || `PAY_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`) : undefined;
+  // Format CVV (3 digits)
+  const handleCvvChange = (text: string) => {
+    const cleaned = text.replace(/\D/g, '').slice(0, 3);
+    setCardCvv(cleaned);
+  };
 
-    addOrder({
+  const processOrderPlacement = (paymentMethod: PaymentMethod, txnId?: string) => {
+    const isOnline = paymentMethod !== 'cod';
+    const isPaid = isOnline;
+
+    const newOrder = addOrder({
       customer_id: user?.id || 'cust_1',
       customer_name: user?.name || 'Customer',
-      customer_phone: user?.phone || '',
+      customer_phone: user?.phone || '9876543210',
       shop_id: activeShopId || '',
       subtotal,
       delivery_fee: deliveryFee,
       total,
-      delivery_address: user?.address || address || 'Banjara Hills, Hyderabad',
-      delivery_lat: user?.latitude || userLat,
-      delivery_lng: user?.longitude || userLng,
-      payment_method: finalPaymentMethod,
-      payment_status: finalPaymentStatus,
-      payment_id: finalPaymentId,
-      payment_time: isOnlinePaid ? new Date().toISOString() : undefined,
-      paid_amount: isOnlinePaid ? total : 0,
-      notes: selectedInstruction ? `Delivery Note: ${DELIVERY_INSTRUCTIONS.find(d => d.id === selectedInstruction)?.label}` : undefined,
+      delivery_address: address || 'Banjara Hills, Hyderabad',
+      delivery_lat: userLat,
+      delivery_lng: userLng,
+      payment_method: paymentMethod,
+      payment_status: isPaid ? 'paid' : 'pending',
+      payment_id: txnId || (isPaid ? `TXN_${Date.now().toString(36).toUpperCase()}` : undefined),
+      payment_time: isPaid ? new Date().toISOString() : undefined,
       items: cartItems.map((ci, idx) => ({
         id: `item_${Date.now()}_${idx}`,
         order_id: '',
@@ -188,34 +113,11 @@ export default function CartScreen() {
 
     clearCart();
     setPlacingOrder(false);
-    setShowPaymentModal(false);
-    router.push('/(tabs)/orders');
+    return newOrder;
   };
 
-  const handlePlaceOrder = () => {
+  const handleCheckout = () => {
     if (subtotal === 0) return;
-
-    // Check if user is authenticated
-    if (!user || !user.id || user.id === 'u_guest_shopper') {
-      const msg = 'Please login or register to place your order so the store can deliver to your exact address.';
-      if (Platform.OS === 'web') {
-        window.alert(msg);
-        router.push('/(auth)/login');
-      } else {
-        Alert.alert(
-          'Login Required',
-          msg,
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { 
-              text: 'Login / Register', 
-              onPress: () => router.push('/(auth)/login') 
-            }
-          ]
-        );
-      }
-      return;
-    }
 
     if (activeShop && subtotal < activeShop.min_order_amount) {
       Alert.alert(
@@ -225,55 +127,72 @@ export default function CartScreen() {
       return;
     }
 
-    if (paymentMethod === 'online') {
-      setGatewayProcessing(false);
-      setGatewaySuccess(false);
-      setShowPaymentModal(true);
-    } else {
+    if (selectedPayment === 'card') {
+      const cleanNum = cardNumber.replace(/\s/g, '');
+      if (cleanNum.length < 16) {
+        Alert.alert('Invalid Card', 'Please enter a valid 16-digit debit/credit card number.');
+        return;
+      }
+      if (cardExpiry.length < 5) {
+        Alert.alert('Invalid Expiry', 'Please enter valid expiry date in MM/YY format.');
+        return;
+      }
+      if (cardCvv.length < 3) {
+        Alert.alert('Invalid CVV', 'Please enter a valid 3-digit CVV.');
+        return;
+      }
+    }
+
+    if (selectedPayment === 'cod') {
+      // Direct COD order placement
       setPlacingOrder(true);
       setTimeout(() => {
-        executePlaceOrder(false);
+        processOrderPlacement('cod');
+        Alert.alert(
+          '🎉 Order Placed Successfully!',
+          `Your Cash on Delivery order has been notified to ${activeShop?.name || 'the store'}. Pay ₹${total.toFixed(0)} upon arrival. Estimated delivery in ${getEstimatedTime(distance)}.`,
+          [
+            {
+              text: 'Track Order ➔',
+              onPress: () => router.push('/(customer)/(tabs)/orders')
+            }
+          ]
+        );
       }, 700);
+      return;
     }
-  };
 
-  const handleProcessOnlinePayment = () => {
-    setGatewayProcessing(true);
-    const txnId = `PAY_UPI_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`;
-    setCreatedPaymentId(txnId);
+    // Online Payments (PhonePe, GPay, Card) - Show Interactive Secure Payment Modal
+    const prefix = selectedPayment === 'phonepe' ? 'PH' : selectedPayment === 'gpay' ? 'GP' : 'CARD';
+    const txn = `TXN_${prefix}_${Math.floor(10000000 + Math.random() * 90000000)}`;
+    setGeneratedTxnId(txn);
+    setPaymentProcessingStage('processing');
+    setPaymentModalVisible(true);
 
+    // Simulate instant secure gateway verification
     setTimeout(() => {
-      setGatewayProcessing(false);
-      setGatewaySuccess(true);
-
-      setTimeout(() => {
-        executePlaceOrder(true, txnId);
-      }, 1100);
-    }, 1400);
+      setPaymentProcessingStage('success');
+      processOrderPlacement(selectedPayment, txn);
+    }, 1800);
   };
 
   if (cartItems.length === 0) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)/home')} style={styles.headerBackBtn}>
-            <Ionicons name="arrow-back" size={20} color="#111827" />
-          </TouchableOpacity>
           <Text style={styles.headerTitle}>My Cart</Text>
-          <View style={{ width: 36 }} />
         </View>
-
         <View style={styles.emptyContainer}>
           <View style={styles.emptyIconCircle}>
             <Ionicons name="cart-outline" size={64} color="#10B981" />
           </View>
           <Text style={styles.emptyTitle}>Your cart is empty</Text>
           <Text style={styles.emptySubtitle}>
-            Browse nearby neighborhood shops and add fresh daily essentials!
+            Browse nearby neighborhood shops and add your daily groceries!
           </Text>
           <TouchableOpacity 
             style={styles.browseButton} 
-            onPress={() => router.push('/(tabs)/home')}
+            onPress={() => router.push('/(customer)/(tabs)/home')}
           >
             <Text style={styles.browseButtonText}>Browse Nearby Shops</Text>
             <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
@@ -287,14 +206,8 @@ export default function CartScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-          <TouchableOpacity onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)/home')} style={styles.headerBackBtn}>
-            <Ionicons name="arrow-back" size={20} color="#111827" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Checkout & Bill</Text>
-        </View>
-        <TouchableOpacity onPress={clearCart} style={styles.clearCartBtn}>
-          <Ionicons name="trash-outline" size={15} color="#EF4444" />
+        <Text style={styles.headerTitle}>Review Your Order</Text>
+        <TouchableOpacity onPress={clearCart}>
           <Text style={styles.clearCartText}>Clear</Text>
         </TouchableOpacity>
       </View>
@@ -328,43 +241,14 @@ export default function CartScreen() {
           <View style={styles.addressTextWrapper}>
             <Text style={styles.addressLabel}>DELIVERY ADDRESS</Text>
             <Text style={styles.addressValue} numberOfLines={2}>
-              {user?.address || address || 'Home - Banjara Hills, Hyderabad'}
+              {address || 'Home - Banjara Hills, Hyderabad'}
             </Text>
           </View>
         </View>
 
-        {/* Delivery Instructions */}
-        <View style={styles.sectionCard}>
-          <Text style={styles.sectionHeader}>Delivery Instructions</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.instructionScroll}>
-            {DELIVERY_INSTRUCTIONS.map(item => {
-              const isSelected = selectedInstruction === item.id;
-              return (
-                <TouchableOpacity
-                  key={item.id}
-                  style={[styles.instructionChip, isSelected && styles.instructionChipActive]}
-                  onPress={() => setSelectedInstruction(item.id)}
-                >
-                  <Ionicons 
-                    name={item.icon} 
-                    size={14} 
-                    color={isSelected ? '#059669' : '#64748B'} 
-                  />
-                  <Text style={[styles.instructionChipText, isSelected && styles.instructionChipTextActive]}>
-                    {item.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
-
         {/* Items List */}
         <View style={styles.sectionCard}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionHeader}>Items ({cartItems.length})</Text>
-            <Text style={styles.sectionSubCount}>{cartItems.reduce((acc, ci) => acc + ci.quantity, 0)} total units</Text>
-          </View>
+          <Text style={styles.sectionHeader}>Items ({cartItems.length})</Text>
           {cartItems.map(item => (
             <View key={item.product.id} style={styles.itemRow}>
               <Image 
@@ -397,95 +281,13 @@ export default function CartScreen() {
           ))}
         </View>
 
-        {/* Coupons & Promo Codes Section (Zepto / Blinkit feature) */}
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionHeaderRow}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Ionicons name="pricetag" size={16} color="#059669" />
-              <Text style={styles.sectionHeader}>Offers & Coupons</Text>
-            </View>
-            {appliedPromo && (
-              <TouchableOpacity onPress={handleRemovePromo}>
-                <Text style={styles.removeCouponText}>Remove</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {/* Promo Input */}
-          <View style={styles.promoInputRow}>
-            <TextInput
-              style={styles.promoInput}
-              placeholder="Enter coupon (e.g. WELCOME50)"
-              value={promoInput}
-              onChangeText={(text) => {
-                setPromoInput(text);
-                setPromoError('');
-              }}
-              autoCapitalize="characters"
-              placeholderTextColor="#94A3B8"
-            />
-            <TouchableOpacity 
-              style={[styles.applyPromoBtn, (!promoInput.trim() || !!appliedPromo) && styles.applyPromoBtnDisabled]}
-              onPress={() => handleApplyPromoCode()}
-              disabled={!promoInput.trim() || !!appliedPromo}
-            >
-              <Text style={styles.applyPromoBtnText}>
-                {appliedPromo ? 'APPLIED' : 'APPLY'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {promoError ? (
-            <Text style={styles.promoErrorText}>{promoError}</Text>
-          ) : null}
-
-          {appliedPromo ? (
-            <View style={styles.appliedBanner}>
-              <Ionicons name="checkmark-circle" size={16} color="#059669" />
-              <Text style={styles.appliedBannerText}>
-                Coupon <Text style={{ fontWeight: '800' }}>{appliedPromo.code}</Text> applied successfully!
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.promoPresetsContainer}>
-              {PROMO_PRESETS.map((preset) => (
-                <TouchableOpacity
-                  key={preset.code}
-                  style={styles.promoPresetCard}
-                  onPress={() => handleApplyPromoCode(preset.code)}
-                >
-                  <View style={styles.presetTopRow}>
-                    <View style={styles.presetTag}>
-                      <Text style={styles.presetTagText}>{preset.code}</Text>
-                    </View>
-                    <Text style={styles.presetApplyLink}>APPLY</Text>
-                  </View>
-                  <Text style={styles.presetDesc}>{preset.description}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-        </View>
-
         {/* Bill Details */}
         <View style={styles.sectionCard}>
-          <Text style={styles.sectionHeader}>Bill Summary</Text>
+          <Text style={styles.sectionHeader}>Bill Details</Text>
           <View style={styles.billRow}>
             <Text style={styles.billLabel}>Item Total</Text>
             <Text style={styles.billValue}>{formatPrice(subtotal)}</Text>
           </View>
-
-          {discountAmount > 0 && (
-            <View style={styles.billRow}>
-              <Text style={[styles.billLabel, { color: '#059669', fontWeight: '700' }]}>
-                Coupon Discount ({appliedPromo?.code})
-              </Text>
-              <Text style={[styles.billValue, { color: '#059669', fontWeight: '700' }]}>
-                - {formatPrice(discountAmount)}
-              </Text>
-            </View>
-          )}
-
           <View style={styles.billRow}>
             <Text style={styles.billLabel}>Delivery Fee ({formatDistance(distance)})</Text>
             <Text style={styles.billValue}>
@@ -502,90 +304,164 @@ export default function CartScreen() {
           </View>
           <View style={styles.divider} />
           <View style={styles.billRow}>
-            <View>
-              <Text style={styles.totalLabel}>Grand Total</Text>
-              <Text style={styles.savingsSubtext}>
-                {discountAmount > 0 ? `You saved ${formatPrice(discountAmount)} on this order!` : 'Guaranteed fresh & on time'}
-              </Text>
-            </View>
+            <Text style={styles.totalLabel}>Grand Total</Text>
             <Text style={styles.totalValue}>{formatPrice(total)}</Text>
           </View>
         </View>
 
-        {/* Payment Options Selector (Zepto / Blinkit style) */}
+        {/* 💳 SELECT PAYMENT METHOD SECTION (PhonePe, GPay, Cards, COD) */}
         <View style={styles.sectionCard}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionHeader}>Payment Method</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <Text style={styles.sectionHeader}>Select Payment Method</Text>
             <View style={styles.secureBadge}>
               <Ionicons name="shield-checkmark" size={12} color="#059669" />
               <Text style={styles.secureBadgeText}>100% Safe & Secure</Text>
             </View>
           </View>
-          
-          {/* Option 1: Instant Online Payment */}
+
+          {/* Option 1: PhonePe */}
           <TouchableOpacity 
-            style={[styles.paymentOptionRow, paymentMethod === 'online' && styles.paymentOptionActive]}
-            onPress={() => setPaymentMethod('online')}
+            style={[styles.paymentOptionRow, selectedPayment === 'phonepe' && styles.paymentOptionActivePhonePe]}
+            onPress={() => setSelectedPayment('phonepe')}
+            activeOpacity={0.8}
           >
-            <View style={styles.paymentRadio}>
-              {paymentMethod === 'online' && <View style={styles.paymentRadioInner} />}
+            <View style={[styles.paymentIconBox, { backgroundColor: '#F3E8FF' }]}>
+              <Text style={{ fontSize: 18, fontWeight: '900', color: '#5F259F' }}>P</Text>
             </View>
-            <View style={styles.paymentIconBox}>
-              <Ionicons name="flash" size={20} color="#059669" />
-            </View>
-            <View style={{ flex: 1, marginLeft: 10 }}>
+            <View style={{ flex: 1, marginLeft: 12 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text style={styles.paymentTitle}>Instant Online Payment</Text>
-                <View style={styles.fastTag}>
-                  <Text style={styles.fastTagText}>RECOMMENDED</Text>
+                <Text style={styles.paymentName}>PhonePe UPI</Text>
+                <View style={styles.instantTag}>
+                  <Text style={styles.instantTagText}>INSTANT</Text>
                 </View>
               </View>
-              <Text style={styles.paymentSubtitle}>UPI (GPay, PhonePe, Paytm), Cards & Net Banking</Text>
-              <View style={styles.paymentBrandsRow}>
-                <Text style={styles.paymentBrandPill}>GPay</Text>
-                <Text style={styles.paymentBrandPill}>PhonePe</Text>
-                <Text style={styles.paymentBrandPill}>Paytm</Text>
-                <Text style={styles.paymentBrandPill}>Cards</Text>
+              <Text style={styles.paymentSubtext}>Pay directly using PhonePe UPI App</Text>
+            </View>
+            <View style={[styles.radioCircle, selectedPayment === 'phonepe' && { borderColor: '#5F259F' }]}>
+              {selectedPayment === 'phonepe' && <View style={[styles.radioInner, { backgroundColor: '#5F259F' }]} />}
+            </View>
+          </TouchableOpacity>
+
+          {/* Option 2: Google Pay (GPay) */}
+          <TouchableOpacity 
+            style={[styles.paymentOptionRow, selectedPayment === 'gpay' && styles.paymentOptionActiveGPay]}
+            onPress={() => setSelectedPayment('gpay')}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.paymentIconBox, { backgroundColor: '#E8F0FE' }]}>
+              <Text style={{ fontSize: 18, fontWeight: '900', color: '#1A73E8' }}>G</Text>
+            </View>
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={styles.paymentName}>Google Pay (GPay)</Text>
+                <View style={[styles.instantTag, { backgroundColor: '#E0F2FE' }]}>
+                  <Text style={[styles.instantTagText, { color: '#0284C7' }]}>FAST</Text>
+                </View>
+              </View>
+              <Text style={styles.paymentSubtext}>Fast UPI checkout with Google Pay</Text>
+            </View>
+            <View style={[styles.radioCircle, selectedPayment === 'gpay' && { borderColor: '#1A73E8' }]}>
+              {selectedPayment === 'gpay' && <View style={[styles.radioInner, { backgroundColor: '#1A73E8' }]} />}
+            </View>
+          </TouchableOpacity>
+
+          {/* Option 3: Credit / Debit Card */}
+          <TouchableOpacity 
+            style={[styles.paymentOptionRow, selectedPayment === 'card' && styles.paymentOptionActiveCard]}
+            onPress={() => setSelectedPayment('card')}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.paymentIconBox, { backgroundColor: '#F1F5F9' }]}>
+              <Ionicons name="card" size={20} color="#0F172A" />
+            </View>
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={styles.paymentName}>Credit / Debit Card</Text>
+              <Text style={styles.paymentSubtext}>Visa, MasterCard, RuPay, Maestro</Text>
+            </View>
+            <View style={[styles.radioCircle, selectedPayment === 'card' && { borderColor: '#0F172A' }]}>
+              {selectedPayment === 'card' && <View style={[styles.radioInner, { backgroundColor: '#0F172A' }]} />}
+            </View>
+          </TouchableOpacity>
+
+          {/* Inline Card Inputs when Card is Selected */}
+          {selectedPayment === 'card' && (
+            <View style={styles.cardInputContainer}>
+              <Text style={styles.cardSectionTitle}>Enter Card Details</Text>
+              
+              <View style={styles.inputWrapper}>
+                <Text style={styles.inputLabel}>CARD NUMBER</Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="4000 1234 5678 9010"
+                  placeholderTextColor="#94A3B8"
+                  keyboardType="number-pad"
+                  maxLength={19}
+                  value={cardNumber}
+                  onChangeText={handleCardNumberChange}
+                />
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <View style={[styles.inputWrapper, { flex: 1 }]}>
+                  <Text style={styles.inputLabel}>EXPIRY (MM/YY)</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="MM/YY"
+                    placeholderTextColor="#94A3B8"
+                    keyboardType="number-pad"
+                    maxLength={5}
+                    value={cardExpiry}
+                    onChangeText={handleExpiryChange}
+                  />
+                </View>
+                <View style={[styles.inputWrapper, { flex: 1 }]}>
+                  <Text style={styles.inputLabel}>CVV / CVC</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="123"
+                    placeholderTextColor="#94A3B8"
+                    keyboardType="number-pad"
+                    secureTextEntry
+                    maxLength={3}
+                    value={cardCvv}
+                    onChangeText={handleCvvChange}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.inputWrapper}>
+                <Text style={styles.inputLabel}>CARDHOLDER NAME</Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="e.g. Rahul Sharma"
+                  placeholderTextColor="#94A3B8"
+                  value={cardName}
+                  onChangeText={setCardName}
+                />
               </View>
             </View>
-          </TouchableOpacity>
+          )}
 
-          {/* Option 2: UPI on Delivery */}
+          {/* Option 4: Cash on Delivery (COD) */}
           <TouchableOpacity 
-            style={[styles.paymentOptionRow, paymentMethod === 'upi_on_delivery' && styles.paymentOptionActive]}
-            onPress={() => setPaymentMethod('upi_on_delivery')}
+            style={[styles.paymentOptionRow, selectedPayment === 'cod' && styles.paymentOptionActiveCOD]}
+            onPress={() => setSelectedPayment('cod')}
+            activeOpacity={0.8}
           >
-            <View style={styles.paymentRadio}>
-              {paymentMethod === 'upi_on_delivery' && <View style={styles.paymentRadioInner} />}
+            <View style={[styles.paymentIconBox, { backgroundColor: '#ECFDF5' }]}>
+              <Ionicons name="cash" size={20} color="#059669" />
             </View>
-            <View style={[styles.paymentIconBox, { backgroundColor: '#E0F2FE' }]}>
-              <Ionicons name="qr-code-outline" size={20} color="#0284C7" />
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={styles.paymentName}>Cash on Delivery (COD)</Text>
+              <Text style={styles.paymentSubtext}>Pay in cash when order is delivered</Text>
             </View>
-            <View style={{ flex: 1, marginLeft: 10 }}>
-              <Text style={styles.paymentTitle}>UPI on Delivery (Scan QR)</Text>
-              <Text style={styles.paymentSubtitle}>Scan delivery partner's dynamic QR at your doorstep</Text>
-            </View>
-          </TouchableOpacity>
-
-          {/* Option 3: Cash on Delivery */}
-          <TouchableOpacity 
-            style={[styles.paymentOptionRow, paymentMethod === 'cod' && styles.paymentOptionActive]}
-            onPress={() => setPaymentMethod('cod')}
-          >
-            <View style={styles.paymentRadio}>
-              {paymentMethod === 'cod' && <View style={styles.paymentRadioInner} />}
-            </View>
-            <View style={[styles.paymentIconBox, { backgroundColor: '#FEF3C7' }]}>
-              <Ionicons name="cash-outline" size={20} color="#D97706" />
-            </View>
-            <View style={{ flex: 1, marginLeft: 10 }}>
-              <Text style={styles.paymentTitle}>Cash on Delivery (COD)</Text>
-              <Text style={styles.paymentSubtitle}>Pay physical cash directly to delivery partner</Text>
+            <View style={[styles.radioCircle, selectedPayment === 'cod' && { borderColor: '#059669' }]}>
+              {selectedPayment === 'cod' && <View style={[styles.radioInner, { backgroundColor: '#059669' }]} />}
             </View>
           </TouchableOpacity>
         </View>
 
-        <View style={{ height: 100 }} />
+        <View style={{ height: 120 }} />
       </ScrollView>
 
       {/* Footer Checkout Bar */}
@@ -595,8 +471,15 @@ export default function CartScreen() {
           <Text style={styles.footerTotal}>{formatPrice(total)}</Text>
         </View>
         <TouchableOpacity 
-          style={[styles.placeOrderButton, placingOrder && { opacity: 0.8 }]}
-          onPress={handlePlaceOrder}
+          style={[
+            styles.placeOrderButton, 
+            selectedPayment === 'phonepe' && { backgroundColor: '#5F259F' },
+            selectedPayment === 'gpay' && { backgroundColor: '#1A73E8' },
+            selectedPayment === 'card' && { backgroundColor: '#0F172A' },
+            selectedPayment === 'cod' && { backgroundColor: '#059669' },
+            placingOrder && { opacity: 0.8 }
+          ]}
+          onPress={handleCheckout}
           disabled={placingOrder}
         >
           {placingOrder ? (
@@ -604,253 +487,91 @@ export default function CartScreen() {
           ) : (
             <>
               <Text style={styles.placeOrderText}>
-                {paymentMethod === 'online' 
-                  ? `Pay Online (${formatPrice(total)})` 
-                  : paymentMethod === 'upi_on_delivery'
-                  ? 'Place Order (UPI QR)'
-                  : 'Place Order (Cash COD)'}
+                {selectedPayment === 'phonepe' && `Pay ${formatPrice(total)} via PhonePe`}
+                {selectedPayment === 'gpay' && `Pay ${formatPrice(total)} via GPay`}
+                {selectedPayment === 'card' && `Pay ${formatPrice(total)} via Card`}
+                {selectedPayment === 'cod' && `Place Order (Cash on Delivery)`}
               </Text>
-              <Ionicons name={paymentMethod === 'online' ? "lock-closed" : "arrow-forward"} size={17} color="#FFFFFF" />
+              <Ionicons name="arrow-forward" size={18} color="#FFFFFF" />
             </>
           )}
         </TouchableOpacity>
       </View>
 
-      {/* ONLINE PAYMENT GATEWAY MODAL (Razorpay / UPI Simulation) */}
+      {/* 📱 ONLINE PAYMENT PROCESSING & SUCCESS MODAL */}
       <Modal
-        visible={showPaymentModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => !gatewayProcessing && setShowPaymentModal(false)}
+        visible={paymentModalVisible}
+        transparent={true}
+        animationType="fade"
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.gatewayCard}>
-            {/* Modal Header */}
-            <View style={styles.gatewayHeader}>
-              <View style={styles.gatewayHeaderLeft}>
-                <View style={styles.gatewayShieldIcon}>
-                  <Ionicons name="shield-checkmark" size={20} color="#FFFFFF" />
+        <View style={styles.modalBackdrop}>
+          <View style={styles.paymentModalCard}>
+            {paymentProcessingStage === 'processing' ? (
+              <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+                <View style={[
+                  styles.gatewayLogoCircle,
+                  selectedPayment === 'phonepe' && { backgroundColor: '#F3E8FF' },
+                  selectedPayment === 'gpay' && { backgroundColor: '#E8F0FE' },
+                  selectedPayment === 'card' && { backgroundColor: '#F1F5F9' },
+                ]}>
+                  {selectedPayment === 'phonepe' && <Text style={{ fontSize: 24, fontWeight: '900', color: '#5F259F' }}>PhonePe</Text>}
+                  {selectedPayment === 'gpay' && <Text style={{ fontSize: 24, fontWeight: '900', color: '#1A73E8' }}>GPay</Text>}
+                  {selectedPayment === 'card' && <Ionicons name="card" size={36} color="#0F172A" />}
                 </View>
-                <View>
-                  <Text style={styles.gatewayTitle}>LocalMart Secure Gateway</Text>
-                  <Text style={styles.gatewaySubtitle}>256-bit SSL Bank Encrypted</Text>
-                </View>
-              </View>
-              {!gatewayProcessing && !gatewaySuccess && (
-                <TouchableOpacity onPress={() => setShowPaymentModal(false)} style={styles.gatewayCloseBtn}>
-                  <Ionicons name="close" size={20} color="#FFFFFF" />
-                </TouchableOpacity>
-              )}
-            </View>
 
-            {/* Processing / Success State */}
-            {gatewayProcessing ? (
-              <View style={styles.processingContainer}>
-                <ActivityIndicator size="large" color="#059669" />
-                <Text style={styles.processingTitle}>Authorizing Payment...</Text>
-                <Text style={styles.processingSub}>Contacting bank & verifying 256-bit token</Text>
-                <View style={styles.processingAmountPill}>
-                  <Text style={styles.processingAmountText}>{formatPrice(total)}</Text>
+                <ActivityIndicator size="large" color={selectedPayment === 'phonepe' ? '#5F259F' : selectedPayment === 'gpay' ? '#1A73E8' : '#0F172A'} style={{ marginVertical: 20 }} />
+                
+                <Text style={styles.processingTitle}>
+                  Connecting to {selectedPayment === 'phonepe' ? 'PhonePe UPI' : selectedPayment === 'gpay' ? 'Google Pay UPI' : 'Bank Gateway'}...
+                </Text>
+                <Text style={styles.processingSubtitle}>
+                  Authorizing payment of {formatPrice(total)} securely
+                </Text>
+                <View style={styles.secureEncryptionRow}>
+                  <Ionicons name="lock-closed" size={14} color="#059669" />
+                  <Text style={styles.secureEncryptionText}>256-Bit SSL Bank Grade Security</Text>
                 </View>
-              </View>
-            ) : gatewaySuccess ? (
-              <View style={styles.successContainer}>
-                <View style={styles.successIconCircle}>
-                  <Ionicons name="checkmark-sharp" size={48} color="#FFFFFF" />
-                </View>
-                <Text style={styles.successTitle}>Payment Successful!</Text>
-                <Text style={styles.successAmount}>{formatPrice(total)} Paid</Text>
-                <Text style={styles.successTxn}>Ref ID: {createdPaymentId}</Text>
-                <Text style={styles.successRedirect}>Redirecting to your orders...</Text>
               </View>
             ) : (
-              /* Payment Methods Content */
-              <View style={styles.gatewayBody}>
-                {/* Order Summary Ribbon */}
-                <View style={styles.gatewaySummaryRow}>
-                  <View>
-                    <Text style={styles.gatewayShopName}>{activeShop?.name || 'Local Store'}</Text>
-                    <Text style={styles.gatewayItemSummary}>{cartItems.length} items • Fast Delivery</Text>
+              <View style={{ alignItems: 'center', paddingVertical: 10 }}>
+                <View style={styles.successIconCircle}>
+                  <Ionicons name="checkmark" size={44} color="#FFFFFF" />
+                </View>
+                <Text style={styles.successTitle}>Payment Successful!</Text>
+                <Text style={styles.successAmount}>{formatPrice(total)}</Text>
+                
+                <View style={styles.txnDetailsBox}>
+                  <View style={styles.txnRow}>
+                    <Text style={styles.txnLabel}>Payment Method</Text>
+                    <Text style={styles.txnValue}>
+                      {selectedPayment === 'phonepe' && 'PhonePe UPI'}
+                      {selectedPayment === 'gpay' && 'Google Pay UPI'}
+                      {selectedPayment === 'card' && 'Debit/Credit Card'}
+                    </Text>
                   </View>
-                  <Text style={styles.gatewayTotalAmount}>{formatPrice(total)}</Text>
+                  <View style={styles.txnRow}>
+                    <Text style={styles.txnLabel}>Transaction ID</Text>
+                    <Text style={styles.txnValueCode}>{generatedTxnId}</Text>
+                  </View>
+                  <View style={styles.txnRow}>
+                    <Text style={styles.txnLabel}>Shop</Text>
+                    <Text style={styles.txnValue}>{activeShop?.name}</Text>
+                  </View>
+                  <View style={styles.txnRow}>
+                    <Text style={styles.txnLabel}>Estimated Delivery</Text>
+                    <Text style={styles.txnValue}>{getEstimatedTime(distance)}</Text>
+                  </View>
                 </View>
 
-                {/* Gateway Tabs */}
-                <View style={styles.gatewayTabsRow}>
-                  <TouchableOpacity 
-                    style={[styles.gatewayTab, paymentTab === 'upi' && styles.gatewayTabActive]}
-                    onPress={() => setPaymentTab('upi')}
-                  >
-                    <Ionicons name="qr-code" size={14} color={paymentTab === 'upi' ? '#059669' : '#64748B'} />
-                    <Text style={[styles.gatewayTabText, paymentTab === 'upi' && styles.gatewayTabTextActive]}>UPI Apps</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity 
-                    style={[styles.gatewayTab, paymentTab === 'card' && styles.gatewayTabActive]}
-                    onPress={() => setPaymentTab('card')}
-                  >
-                    <Ionicons name="card" size={14} color={paymentTab === 'card' ? '#059669' : '#64748B'} />
-                    <Text style={[styles.gatewayTabText, paymentTab === 'card' && styles.gatewayTabTextActive]}>Cards</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity 
-                    style={[styles.gatewayTab, paymentTab === 'netbanking' && styles.gatewayTabActive]}
-                    onPress={() => setPaymentTab('netbanking')}
-                  >
-                    <Ionicons name="business" size={14} color={paymentTab === 'netbanking' ? '#059669' : '#64748B'} />
-                    <Text style={[styles.gatewayTabText, paymentTab === 'netbanking' && styles.gatewayTabTextActive]}>NetBanking</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {/* TAB 1: UPI APPS */}
-                {paymentTab === 'upi' && (
-                  <View style={styles.tabContent}>
-                    <Text style={styles.tabHeading}>Select your preferred UPI App:</Text>
-                    
-                    <View style={styles.upiGrid}>
-                      {[
-                        { id: 'gpay', name: 'Google Pay', icon: 'logo-google' as const, color: '#4285F4' },
-                        { id: 'phonepe', name: 'PhonePe', icon: 'phone-portrait' as const, color: '#5F259F' },
-                        { id: 'paytm', name: 'Paytm UPI', icon: 'wallet' as const, color: '#00B9F5' },
-                        { id: 'cred', name: 'CRED UPI', icon: 'flash' as const, color: '#1E293B' },
-                      ].map(app => (
-                        <TouchableOpacity
-                          key={app.id}
-                          style={[styles.upiCard, selectedUpiApp === app.id && styles.upiCardActive]}
-                          onPress={() => setSelectedUpiApp(app.id as any)}
-                        >
-                          <View style={[styles.upiIconCircle, { backgroundColor: app.color }]}>
-                            <Ionicons name={app.icon} size={18} color="#FFFFFF" />
-                          </View>
-                          <Text style={styles.upiAppName}>{app.name}</Text>
-                          {selectedUpiApp === app.id && (
-                            <View style={styles.upiCheckedBadge}>
-                              <Ionicons name="checkmark-circle" size={16} color="#059669" />
-                            </View>
-                          )}
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-
-                    {/* Custom UPI ID */}
-                    <View style={styles.customUpiBox}>
-                      <Text style={styles.customUpiLabel}>Or enter UPI ID / VPA</Text>
-                      <View style={styles.customUpiInputWrapper}>
-                        <TextInput
-                          style={styles.customUpiInput}
-                          placeholder="e.g. mobile@okhdfcbank"
-                          value={customUpiId}
-                          onChangeText={(t) => {
-                            setCustomUpiId(t);
-                            setSelectedUpiApp('custom');
-                          }}
-                          placeholderTextColor="#94A3B8"
-                        />
-                        <TouchableOpacity 
-                          style={styles.verifyUpiBtn}
-                          onPress={() => setSelectedUpiApp('custom')}
-                        >
-                          <Text style={styles.verifyUpiBtnText}>Verify</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  </View>
-                )}
-
-                {/* TAB 2: CREDIT / DEBIT CARDS */}
-                {paymentTab === 'card' && (
-                  <View style={styles.tabContent}>
-                    <Text style={styles.tabHeading}>Card Details:</Text>
-                    
-                    <View style={styles.cardInputGroup}>
-                      <Text style={styles.inputLabel}>Card Number</Text>
-                      <View style={styles.cardInputRow}>
-                        <Ionicons name="card-outline" size={18} color="#64748B" />
-                        <TextInput
-                          style={styles.cardTextInput}
-                          value={cardNumber}
-                          onChangeText={setCardNumber}
-                          placeholder="16-digit card number"
-                          keyboardType="numeric"
-                        />
-                        <Text style={styles.visaBadge}>VISA / RuPay</Text>
-                      </View>
-                    </View>
-
-                    <View style={{ flexDirection: 'row', gap: 10 }}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.inputLabel}>Expiry</Text>
-                        <TextInput
-                          style={styles.cardSmallInput}
-                          value={cardExpiry}
-                          onChangeText={setCardExpiry}
-                          placeholder="MM/YY"
-                        />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.inputLabel}>CVV</Text>
-                        <TextInput
-                          style={styles.cardSmallInput}
-                          value={cardCvv}
-                          onChangeText={setCardCvv}
-                          placeholder="3 digits"
-                          secureTextEntry
-                          keyboardType="numeric"
-                        />
-                      </View>
-                    </View>
-
-                    <View style={[styles.cardInputGroup, { marginTop: 8 }]}>
-                      <Text style={styles.inputLabel}>Cardholder Name</Text>
-                      <TextInput
-                        style={styles.cardSmallInput}
-                        value={cardHolder}
-                        onChangeText={setCardHolder}
-                        placeholder="Name on card"
-                      />
-                    </View>
-                  </View>
-                )}
-
-                {/* TAB 3: NETBANKING */}
-                {paymentTab === 'netbanking' && (
-                  <View style={styles.tabContent}>
-                    <Text style={styles.tabHeading}>Select Popular Bank:</Text>
-                    <View style={styles.bankGrid}>
-                      {['HDFC Bank', 'ICICI Bank', 'SBI Bank', 'Axis Bank', 'Kotak Bank', 'Punjab National Bank'].map(bank => (
-                        <TouchableOpacity
-                          key={bank}
-                          style={[styles.bankItem, selectedBank === bank && styles.bankItemActive]}
-                          onPress={() => setSelectedBank(bank)}
-                        >
-                          <Ionicons 
-                            name={selectedBank === bank ? "radio-button-on" : "radio-button-off"} 
-                            size={16} 
-                            color={selectedBank === bank ? "#059669" : "#94A3B8"} 
-                          />
-                          <Text style={[styles.bankItemText, selectedBank === bank && styles.bankItemTextActive]}>
-                            {bank}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </View>
-                )}
-
-                {/* Modal Pay CTA Button */}
                 <TouchableOpacity 
-                  style={styles.modalPayBtn}
-                  onPress={handleProcessOnlinePayment}
+                  style={styles.doneButton}
+                  onPress={() => {
+                    setPaymentModalVisible(false);
+                    router.push('/(customer)/(tabs)/orders');
+                  }}
                 >
-                  <Ionicons name="lock-closed" size={16} color="#FFFFFF" />
-                  <Text style={styles.modalPayBtnText}>
-                    Pay {formatPrice(total)} Now
-                  </Text>
+                  <Text style={styles.doneButtonText}>Track Order Live ➔</Text>
                 </TouchableOpacity>
-
-                <Text style={styles.gatewaySecurityNote}>
-                  🛡️ Protected by 256-bit AES end-to-end security. No card data is stored.
-                </Text>
               </View>
             )}
           </View>
@@ -875,453 +596,26 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  headerBackBtn: {
-    padding: 6,
-    borderRadius: 8,
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
   headerTitle: {
     fontSize: 18,
     fontWeight: '800',
     color: '#111827',
   },
-  clearCartBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    backgroundColor: '#FEE2E2',
-    borderRadius: 6,
-  },
   clearCartText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#EF4444',
-  },
-  content: {
-    flex: 1,
-    padding: 16,
-  },
-  shopCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#ECFDF5',
-    padding: 14,
-    borderRadius: 14,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#A7F3D0',
-  },
-  shopIconCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  shopTextWrapper: {
-    marginLeft: 12,
-    flex: 1,
-  },
-  shopOrderingFrom: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#059669',
-    letterSpacing: 0.5,
-  },
-  shopName: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#065F46',
-    marginTop: 1,
-  },
-  shopMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-    gap: 4,
-  },
-  shopDistanceText: {
-    fontSize: 12,
-    color: '#047857',
-    fontWeight: '600',
-  },
-  dot: {
-    color: '#9CA3AF',
-    fontSize: 10,
-  },
-  shopTimeText: {
-    fontSize: 12,
-    color: '#B45309',
-    fontWeight: '700',
-  },
-  addressCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    padding: 14,
-    borderRadius: 14,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  addressIconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#ECFDF5',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  addressTextWrapper: {
-    marginLeft: 12,
-    flex: 1,
-  },
-  addressLabel: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#64748B',
-    letterSpacing: 0.5,
-  },
-  addressValue: {
     fontSize: 13,
-    fontWeight: '600',
-    color: '#1E293B',
-    marginTop: 2,
-  },
-  sectionCard: {
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderRadius: 14,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  sectionHeader: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#111827',
-  },
-  sectionSubCount: {
-    fontSize: 12,
-    color: '#64748B',
-    fontWeight: '600',
-  },
-  instructionScroll: {
-    gap: 8,
-    paddingTop: 4,
-  },
-  instructionChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    backgroundColor: '#F8FAFC',
-  },
-  instructionChipActive: {
-    borderColor: '#10B981',
-    backgroundColor: '#ECFDF5',
-  },
-  instructionChipText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#475569',
-  },
-  instructionChipTextActive: {
-    color: '#059669',
-    fontWeight: '700',
-  },
-  itemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-  },
-  itemImage: {
-    width: 48,
-    height: 48,
-    borderRadius: 8,
-    backgroundColor: '#F1F5F9',
-  },
-  itemInfo: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  itemName: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1E293B',
-  },
-  itemUnit: {
-    fontSize: 12,
-    color: '#64748B',
-    marginTop: 2,
-  },
-  itemPrice: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#059669',
-    marginTop: 2,
-  },
-  stepperContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#059669',
-    borderRadius: 8,
-    paddingHorizontal: 4,
-    paddingVertical: 3,
-  },
-  stepperBtn: {
-    padding: 4,
-  },
-  stepperCount: {
-    color: '#FFFFFF',
-    fontWeight: '800',
-    fontSize: 13,
-    paddingHorizontal: 8,
-  },
-  promoInputRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 8,
-  },
-  promoInput: {
-    flex: 1,
-    height: 42,
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#1E293B',
-    backgroundColor: '#F8FAFC',
-  },
-  applyPromoBtn: {
-    backgroundColor: '#059669',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    borderRadius: 8,
-  },
-  applyPromoBtnDisabled: {
-    backgroundColor: '#94A3B8',
-  },
-  applyPromoBtnText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  removeCouponText: {
-    fontSize: 12,
     color: '#EF4444',
     fontWeight: '700',
-  },
-  promoErrorText: {
-    fontSize: 12,
-    color: '#EF4444',
-    fontWeight: '600',
-    marginTop: 2,
-    marginBottom: 6,
-  },
-  appliedBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#ECFDF5',
-    padding: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#A7F3D0',
-  },
-  appliedBannerText: {
-    fontSize: 12,
-    color: '#065F46',
-  },
-  promoPresetsContainer: {
-    gap: 8,
-    marginTop: 6,
-  },
-  promoPresetCard: {
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderStyle: 'dashed',
-    borderRadius: 8,
-    padding: 10,
-  },
-  presetTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  presetTag: {
-    backgroundColor: '#FEF3C7',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: '#FDE68A',
-  },
-  presetTagText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#B45309',
-  },
-  presetApplyLink: {
-    fontSize: 12,
-    fontWeight: '800',
-    color: '#059669',
-  },
-  presetDesc: {
-    fontSize: 12,
-    color: '#475569',
-  },
-  billRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 6,
-  },
-  billLabel: {
-    fontSize: 13,
-    color: '#64748B',
-    fontWeight: '500',
-  },
-  billValue: {
-    fontSize: 13,
-    color: '#1E293B',
-    fontWeight: '700',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#E2E8F0',
-    marginVertical: 8,
-  },
-  totalLabel: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#111827',
-  },
-  savingsSubtext: {
-    fontSize: 11,
-    color: '#059669',
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  totalValue: {
-    fontSize: 17,
-    fontWeight: '900',
-    color: '#059669',
-  },
-  paymentOptionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 10,
-    marginBottom: 8,
-    backgroundColor: '#F8FAFC',
-  },
-  paymentOptionActive: {
-    borderColor: '#10B981',
-    backgroundColor: '#ECFDF5',
-  },
-  paymentRadio: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 2,
-    borderColor: '#059669',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  paymentRadioInner: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#059669',
-  },
-  paymentTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#1E293B',
-  },
-  paymentSubtitle: {
-    fontSize: 11,
-    color: '#64748B',
-    marginTop: 1,
-  },
-  footer: {
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderTopWidth: 1,
-    borderTopColor: '#E2E8F0',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-  },
-  footerLeft: {
-    flex: 1,
-  },
-  footerTotalLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#64748B',
-    letterSpacing: 0.5,
-  },
-  footerTotal: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: '#059669',
-  },
-  placeOrderButton: {
-    backgroundColor: '#059669',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderRadius: 12,
-  },
-  placeOrderText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '800',
   },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 32,
+    padding: 24,
   },
   emptyIconCircle: {
-    width: 110,
-    height: 110,
-    borderRadius: 55,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
     backgroundColor: '#ECFDF5',
     justifyContent: 'center',
     alignItems: 'center',
@@ -1330,18 +624,17 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 20,
     fontWeight: '800',
-    color: '#1E293B',
-    marginBottom: 8,
+    color: '#111827',
   },
   emptySubtitle: {
     fontSize: 14,
-    color: '#64748B',
+    color: '#6B7280',
     textAlign: 'center',
     lineHeight: 20,
     marginBottom: 24,
   },
   browseButton: {
-    backgroundColor: '#059669',
+    backgroundColor: '#10B981',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
@@ -1351,11 +644,113 @@ const styles = StyleSheet.create({
   },
   browseButtonText: {
     color: '#FFFFFF',
+    fontWeight: '800',
     fontSize: 15,
-    fontWeight: '700',
   },
-
-  // Payment Options Extras
+  content: {
+    flex: 1,
+    padding: 16,
+  },
+  shopCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  shopIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#ECFDF5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  shopTextWrapper: {
+    flex: 1,
+  },
+  shopOrderingFrom: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#6B7280',
+    letterSpacing: 0.5,
+  },
+  shopName: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  shopMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+  shopDistanceText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#059669',
+  },
+  shopTimeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#D97706',
+  },
+  dot: {
+    color: '#9CA3AF',
+    fontSize: 10,
+  },
+  addressCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  addressIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#ECFDF5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  addressTextWrapper: {
+    flex: 1,
+  },
+  addressLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#6B7280',
+    letterSpacing: 0.5,
+  },
+  addressValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginTop: 2,
+  },
+  sectionCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  sectionHeader: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#111827',
+  },
   secureBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1370,367 +765,294 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#059669',
   },
-  paymentIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#ECFDF5',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 8,
-  },
-  fastTag: {
-    backgroundColor: '#DCFCE7',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  fastTagText: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: '#166534',
-    letterSpacing: 0.4,
-  },
-  paymentBrandsRow: {
+  itemRow: {
     flexDirection: 'row',
-    gap: 6,
-    marginTop: 6,
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
   },
-  paymentBrandPill: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#475569',
-    backgroundColor: '#F1F5F9',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
+  itemImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    backgroundColor: '#F3F4F6',
   },
-
-  // Payment Gateway Modal
-  modalOverlay: {
+  itemInfo: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.75)',
-    justifyContent: 'flex-end',
+    marginLeft: 12,
   },
-  gatewayCard: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: '90%',
-    overflow: 'hidden',
+  itemName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#111827',
   },
-  gatewayHeader: {
-    backgroundColor: '#0F172A',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+  itemUnit: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  itemPrice: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#059669',
+    marginTop: 2,
+  },
+  stepperContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    backgroundColor: '#F3F4F6',
+    borderRadius: 8,
+    padding: 2,
   },
-  gatewayHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  gatewayShieldIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+  stepperBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
     backgroundColor: '#10B981',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  gatewayTitle: {
-    fontSize: 16,
+  stepperCount: {
+    paddingHorizontal: 10,
+    fontSize: 13,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: '#111827',
   },
-  gatewaySubtitle: {
-    fontSize: 11,
-    color: '#94A3B8',
-    marginTop: 1,
-  },
-  gatewayCloseBtn: {
-    padding: 6,
-    borderRadius: 16,
-    backgroundColor: '#334155',
-  },
-  gatewayBody: {
-    padding: 20,
-  },
-  gatewaySummaryRow: {
+  billRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    paddingVertical: 4,
+  },
+  billLabel: {
+    fontSize: 13,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  billValue: {
+    fontSize: 13,
+    color: '#111827',
+    fontWeight: '700',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#F3F4F6',
+    marginVertical: 8,
+  },
+  totalLabel: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  totalValue: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#059669',
+  },
+  paymentOptionRow: {
+    flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#F8FAFC',
-    padding: 14,
-    borderRadius: 12,
-    borderWidth: 1,
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 8,
+    borderWidth: 1.5,
     borderColor: '#E2E8F0',
-    marginBottom: 16,
   },
-  gatewayShopName: {
+  paymentOptionActivePhonePe: {
+    borderColor: '#5F259F',
+    backgroundColor: '#FAF5FF',
+  },
+  paymentOptionActiveGPay: {
+    borderColor: '#1A73E8',
+    backgroundColor: '#F0F7FF',
+  },
+  paymentOptionActiveCard: {
+    borderColor: '#0F172A',
+    backgroundColor: '#F8FAFC',
+  },
+  paymentOptionActiveCOD: {
+    borderColor: '#059669',
+    backgroundColor: '#ECFDF5',
+  },
+  paymentIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  paymentName: {
     fontSize: 14,
     fontWeight: '800',
     color: '#1E293B',
   },
-  gatewayItemSummary: {
-    fontSize: 12,
+  paymentSubtext: {
+    fontSize: 11,
     color: '#64748B',
     marginTop: 2,
   },
-  gatewayTotalAmount: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: '#059669',
-  },
-  gatewayTabsRow: {
-    flexDirection: 'row',
-    backgroundColor: '#F1F5F9',
-    borderRadius: 10,
-    padding: 4,
-    marginBottom: 16,
-    gap: 4,
-  },
-  gatewayTab: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  gatewayTabActive: {
-    backgroundColor: '#FFFFFF',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-  },
-  gatewayTabText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#64748B',
-  },
-  gatewayTabTextActive: {
-    color: '#059669',
-    fontWeight: '800',
-  },
-  tabContent: {
-    marginBottom: 20,
-  },
-  tabHeading: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#334155',
-    marginBottom: 12,
-  },
-  upiGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginBottom: 14,
-  },
-  upiCard: {
-    width: '48%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 10,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 10,
-    backgroundColor: '#F8FAFC',
-    gap: 10,
-  },
-  upiCardActive: {
-    borderColor: '#059669',
-    backgroundColor: '#ECFDF5',
-  },
-  upiIconCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  upiAppName: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#1E293B',
-    flex: 1,
-  },
-  upiCheckedBadge: {
-    marginLeft: 'auto',
-  },
-  customUpiBox: {
-    marginTop: 4,
-  },
-  customUpiLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#64748B',
-    marginBottom: 6,
-  },
-  customUpiInputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    backgroundColor: '#FFFFFF',
-  },
-  customUpiInput: {
-    flex: 1,
-    paddingVertical: 10,
-    fontSize: 13,
-    color: '#1E293B',
-  },
-  verifyUpiBtn: {
-    backgroundColor: '#059669',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-  },
-  verifyUpiBtnText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  cardInputGroup: {
-    marginBottom: 10,
-  },
-  inputLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#64748B',
-    marginBottom: 4,
-    textTransform: 'uppercase',
-  },
-  cardInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    backgroundColor: '#FFFFFF',
-    gap: 8,
-  },
-  cardTextInput: {
-    flex: 1,
-    paddingVertical: 10,
-    fontSize: 13,
-    color: '#1E293B',
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-  },
-  visaBadge: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#2563EB',
-    backgroundColor: '#DBEAFE',
+  instantTag: {
+    backgroundColor: '#F3E8FF',
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
   },
-  cardSmallInput: {
+  instantTagText: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: '#7E22CE',
+  },
+  radioCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#CBD5E1',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  radioInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  cardInputContainer: {
+    backgroundColor: '#F8FAFC',
+    padding: 14,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: '#CBD5E1',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 13,
-    color: '#1E293B',
-    backgroundColor: '#FFFFFF',
+    marginBottom: 10,
   },
-  bankGrid: {
-    gap: 8,
-  },
-  bankItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 10,
-    backgroundColor: '#F8FAFC',
-  },
-  bankItemActive: {
-    borderColor: '#059669',
-    backgroundColor: '#ECFDF5',
-  },
-  bankItemText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#334155',
-  },
-  bankItemTextActive: {
+  cardSectionTitle: {
+    fontSize: 12,
     fontWeight: '800',
-    color: '#059669',
+    color: '#334155',
+    marginBottom: 10,
   },
-  modalPayBtn: {
+  inputWrapper: {
+    marginBottom: 10,
+  },
+  inputLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#64748B',
+    marginBottom: 4,
+    letterSpacing: 0.5,
+  },
+  textInput: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  footer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 28 : 14,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: -4 },
+  },
+  footerLeft: {
+    flex: 1,
+  },
+  footerTotalLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#6B7280',
+    letterSpacing: 0.5,
+  },
+  footerTotal: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#111827',
+  },
+  placeOrderButton: {
     backgroundColor: '#059669',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     gap: 8,
-    paddingVertical: 15,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
     borderRadius: 12,
-    elevation: 4,
-    shadowColor: '#059669',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
   },
-  modalPayBtnText: {
+  placeOrderText: {
     color: '#FFFFFF',
-    fontSize: 16,
     fontWeight: '800',
+    fontSize: 14,
   },
-  gatewaySecurityNote: {
-    fontSize: 11,
-    color: '#64748B',
-    textAlign: 'center',
-    marginTop: 12,
-  },
-  processingContainer: {
-    padding: 40,
-    alignItems: 'center',
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
     justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  paymentModalCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  gatewayLogoCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#E2E8F0',
   },
   processingTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '800',
-    color: '#1E293B',
-    marginTop: 16,
+    color: '#0F172A',
+    textAlign: 'center',
     marginBottom: 6,
   },
-  processingSub: {
+  processingSubtitle: {
     fontSize: 13,
     color: '#64748B',
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
-  processingAmountPill: {
-    backgroundColor: '#ECFDF5',
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#A7F3D0',
-  },
-  processingAmountText: {
-    fontSize: 18,
-    fontWeight: '900',
-    color: '#059669',
-  },
-  successContainer: {
-    padding: 36,
+  secureEncryptionRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  secureEncryptionText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#059669',
   },
   successIconCircle: {
     width: 72,
@@ -1740,30 +1062,59 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
-    elevation: 4,
   },
   successTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '900',
     color: '#065F46',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   successAmount: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#1E293B',
-    marginBottom: 8,
-  },
-  successTxn: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#64748B',
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    fontSize: 26,
+    fontWeight: '900',
+    color: '#047857',
     marginBottom: 16,
   },
-  successRedirect: {
-    fontSize: 13,
+  txnDetailsBox: {
+    width: '100%',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 20,
+  },
+  txnRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 5,
+  },
+  txnLabel: {
+    fontSize: 12,
+    color: '#64748B',
+    fontWeight: '600',
+  },
+  txnValue: {
+    fontSize: 12,
+    color: '#0F172A',
+    fontWeight: '800',
+  },
+  txnValueCode: {
+    fontSize: 11,
     color: '#059669',
-    fontWeight: '700',
+    fontWeight: '900',
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+  doneButton: {
+    width: '100%',
+    backgroundColor: '#10B981',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  doneButtonText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
 });

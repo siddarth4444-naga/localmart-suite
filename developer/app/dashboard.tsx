@@ -19,6 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useShopStore } from '../src/stores/shopStore';
+import { useNotificationStore } from '../src/services/notificationService';
 import { useAuthStore } from '../src/stores/authStore';
 import { realtimeSync, getSyncServerUrl } from '../src/services/realtimeSync';
 import { Shop, Product, Order } from '../types';
@@ -111,12 +112,12 @@ export default function DeveloperIndexScreen() {
     setServerUrl(getSyncServerUrl());
   }, []);
 
-  const showAlert = (title: string, msg: string) => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      window.alert(`${title}\n${msg}`);
-    } else {
-      Alert.alert(title, msg);
-    }
+  const showAlert = (title: string, msg: string, type: 'success' | 'alert' | 'order' | 'shop' = 'success') => {
+    useNotificationStore.getState().showNotification({
+      title,
+      message: msg,
+      type: title.toLowerCase().includes('error') || title.toLowerCase().includes('warning') || title.toLowerCase().includes('required') ? 'alert' : 'success',
+    });
   };
 
   const handleSyncNow = async () => {

@@ -21,12 +21,12 @@ export const AppNotificationBanner: React.FC = () => {
         Animated.spring(translateY, {
           toValue: 0,
           useNativeDriver: true,
-          bounciness: 8,
-          speed: 14,
+          bounciness: 6,
+          speed: 16,
         }),
         Animated.timing(opacity, {
           toValue: 1,
-          duration: 200,
+          duration: 180,
           useNativeDriver: true,
         }),
       ]).start();
@@ -34,12 +34,12 @@ export const AppNotificationBanner: React.FC = () => {
       Animated.parallel([
         Animated.timing(translateY, {
           toValue: -150,
-          duration: 250,
+          duration: 220,
           useNativeDriver: true,
         }),
         Animated.timing(opacity, {
           toValue: 0,
-          duration: 200,
+          duration: 180,
           useNativeDriver: true,
         }),
       ]).start();
@@ -55,6 +55,56 @@ export const AppNotificationBanner: React.FC = () => {
     dismissNotification();
   };
 
+  const getTypeStyle = () => {
+    const type = currentNotification.type || 'success';
+    switch (type) {
+      case 'success':
+      case 'shop':
+        return {
+          borderColor: '#10B981',
+          shadowColor: '#10B981',
+          iconName: 'checkmark-circle' as const,
+          iconColor: '#10B981',
+          badgeBg: '#064E3B',
+          tagText: 'SUCCESS',
+          tagColor: '#34D399',
+        };
+      case 'order':
+        return {
+          borderColor: '#F59E0B',
+          shadowColor: '#F59E0B',
+          iconName: 'receipt' as const,
+          iconColor: '#F59E0B',
+          badgeBg: '#451A03',
+          tagText: 'ORDER',
+          tagColor: '#FBBF24',
+        };
+      case 'delivery':
+        return {
+          borderColor: '#8B5CF6',
+          shadowColor: '#8B5CF6',
+          iconName: 'bicycle' as const,
+          iconColor: '#8B5CF6',
+          badgeBg: '#2E1065',
+          tagText: 'DELIVERY',
+          tagColor: '#A78BFA',
+        };
+      case 'alert':
+      default:
+        return {
+          borderColor: '#6366F1',
+          shadowColor: '#6366F1',
+          iconName: 'notifications' as const,
+          iconColor: '#818CF8',
+          badgeBg: '#1E1B4B',
+          tagText: 'NOTIFICATION',
+          tagColor: '#818CF8',
+        };
+    }
+  };
+
+  const typeConfig = getTypeStyle();
+
   return (
     <Animated.View
       style={[
@@ -68,14 +118,19 @@ export const AppNotificationBanner: React.FC = () => {
       <TouchableOpacity
         activeOpacity={0.92}
         onPress={handlePress}
-        style={styles.card}
+        style={[styles.card, { borderColor: typeConfig.borderColor, shadowColor: typeConfig.shadowColor }]}
       >
         <View style={styles.topRow}>
           <View style={styles.appBadge}>
-            <View style={styles.iconCircle}>
-              <Ionicons name="code-working" size={14} color="#FFFFFF" />
+            <View style={[styles.iconCircle, { backgroundColor: typeConfig.badgeBg }]}>
+              <Ionicons name={typeConfig.iconName} size={15} color={typeConfig.iconColor} />
             </View>
-            <Text style={styles.appName}>LocalMart Admin Console</Text>
+            <View>
+              <Text style={styles.appName}>LocalMart Console</Text>
+            </View>
+            <View style={[styles.tagPill, { backgroundColor: typeConfig.badgeBg }]}>
+              <Text style={[styles.tagText, { color: typeConfig.tagColor }]}>{typeConfig.tagText}</Text>
+            </View>
           </View>
           <View style={styles.timeBadge}>
             <Text style={styles.timeText}>{currentNotification.timestamp || 'Just now'}</Text>
@@ -84,7 +139,7 @@ export const AppNotificationBanner: React.FC = () => {
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               style={styles.closeBtn}
             >
-              <Ionicons name="close" size={16} color="#9CA3AF" />
+              <Ionicons name="close-circle" size={18} color="#94A3B8" />
             </TouchableOpacity>
           </View>
         </View>
@@ -94,7 +149,7 @@ export const AppNotificationBanner: React.FC = () => {
             <Text style={styles.title} numberOfLines={1}>
               {currentNotification.title}
             </Text>
-            <Text style={styles.message} numberOfLines={2}>
+            <Text style={styles.message} numberOfLines={3}>
               {currentNotification.message}
             </Text>
           </View>
@@ -103,8 +158,8 @@ export const AppNotificationBanner: React.FC = () => {
         {currentNotification.actionLabel && (
           <View style={styles.actionRow}>
             <TouchableOpacity style={styles.actionBtn} onPress={handlePress}>
-              <Text style={styles.actionBtnText}>{currentNotification.actionLabel}</Text>
-              <Ionicons name="chevron-forward" size={14} color="#6366F1" />
+              <Text style={[styles.actionBtnText, { color: typeConfig.tagColor }]}>{currentNotification.actionLabel}</Text>
+              <Ionicons name="chevron-forward" size={14} color={typeConfig.tagColor} />
             </TouchableOpacity>
           </View>
         )}
@@ -116,27 +171,25 @@ export const AppNotificationBanner: React.FC = () => {
 const styles = StyleSheet.create({
   wrapper: {
     position: 'absolute',
-    top: Platform.OS === 'web' ? 12 : 44,
-    left: 12,
-    right: 12,
-    zIndex: 99999,
+    top: Platform.OS === 'web' ? 14 : 48,
+    left: 14,
+    right: 14,
+    zIndex: 999999,
     alignItems: 'center',
-    maxWidth: 500,
+    maxWidth: 520,
     alignSelf: 'center',
   },
   card: {
     width: '100%',
     backgroundColor: '#0F172A',
-    borderRadius: 18,
+    borderRadius: 16,
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderWidth: 1.5,
-    borderColor: '#6366F1',
-    shadowColor: '#6366F1',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 12,
   },
   topRow: {
     flexDirection: 'row',
@@ -150,18 +203,26 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   iconCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#6366F1',
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     justifyContent: 'center',
     alignItems: 'center',
   },
   appName: {
     fontSize: 12,
     fontWeight: '800',
-    color: '#818CF8',
-    textTransform: 'uppercase',
+    color: '#F1F5F9',
+    letterSpacing: 0.4,
+  },
+  tagPill: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  tagText: {
+    fontSize: 9,
+    fontWeight: '900',
     letterSpacing: 0.5,
   },
   timeBadge: {
@@ -187,7 +248,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 15,
     fontWeight: '800',
-    color: '#F8FAFC',
+    color: '#FFFFFF',
     marginBottom: 3,
   },
   message: {
@@ -214,6 +275,5 @@ const styles = StyleSheet.create({
   actionBtnText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#818CF8',
   },
 });

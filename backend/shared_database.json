@@ -172,6 +172,54 @@
   ],
   "products": [
     {
+      "id": "prod_1790257035655",
+      "shop_id": "shop_1789625170165",
+      "category_id": "c1",
+      "name": "mile",
+      "description": "",
+      "image_url": "https://images.unsplash.com/photo-1571771894821-ce9b6c11b08e?auto=format&fit=crop&w=400&q=80",
+      "price": 40,
+      "mrp": 50,
+      "unit": "kg",
+      "unit_value": 1,
+      "stock_quantity": 100,
+      "is_available": true,
+      "created_at": "2026-09-24T13:37:15.655Z",
+      "updated_at": "2026-09-24T13:37:15.656Z"
+    },
+    {
+      "id": "prod_1790152463557",
+      "shop_id": "shop_1789625170165",
+      "category_id": "c1",
+      "name": "lkdsjflskdj",
+      "description": "",
+      "image_url": "https://images.unsplash.com/photo-1571771894821-ce9b6c11b08e?auto=format&fit=crop&w=400&q=80",
+      "price": 40,
+      "mrp": 50,
+      "unit": "kg",
+      "unit_value": 1,
+      "stock_quantity": 100,
+      "is_available": true,
+      "created_at": "2026-09-23T08:34:23.557Z",
+      "updated_at": "2026-09-23T08:34:23.557Z"
+    },
+    {
+      "id": "prod_1790152452269",
+      "shop_id": "shop_1789625170165",
+      "category_id": "c1",
+      "name": "qqqq",
+      "description": "",
+      "image_url": "https://images.unsplash.com/photo-1571771894821-ce9b6c11b08e?auto=format&fit=crop&w=400&q=80",
+      "price": 40,
+      "mrp": 50,
+      "unit": "kg",
+      "unit_value": 1,
+      "stock_quantity": 100,
+      "is_available": true,
+      "created_at": "2026-09-23T08:34:12.269Z",
+      "updated_at": "2026-09-23T08:34:12.269Z"
+    },
+    {
       "id": "prod_1789636505272",
       "shop_id": "shop_1789108938651",
       "category_id": "c1",
@@ -413,6 +461,111 @@
     }
   ],
   "orders": [
+    {
+      "id": "ord_1790256932908",
+      "customer_id": "u_cust_1790157250115",
+      "shop_id": "shop_1789625170165",
+      "status": "delivered",
+      "subtotal": 360,
+      "delivery_fee": 0,
+      "total": 365,
+      "delivery_address": "Banjara Hills, Hyderabad",
+      "delivery_lat": 17.4142,
+      "delivery_lng": 78.4335,
+      "payment_method": "phonepe",
+      "payment_status": "paid",
+      "payment_id": "TXN_PH_88446422",
+      "payment_time": "2026-09-24T13:35:32.908Z",
+      "created_at": "2026-09-24T13:35:32.908Z",
+      "updated_at": "2026-09-24T13:36:11.737Z",
+      "items": [
+        {
+          "id": "item_1790256932908_0",
+          "order_id": "",
+          "product_id": "prod_1790152463557",
+          "product_name": "lkdsjflskdj",
+          "product_price": 40,
+          "product_image_url": "https://images.unsplash.com/photo-1571771894821-ce9b6c11b08e?auto=format&fit=crop&w=400&q=80",
+          "quantity": 9,
+          "total": 360
+        }
+      ],
+      "delivery_partner": {
+        "id": "dp_ravi_kumar",
+        "name": "Ravi Kumar (Rider)",
+        "phone": "+91 98480 99887"
+      }
+    },
+    {
+      "id": "ord_1790157264045",
+      "customer_id": "u_cust_1790157250115",
+      "shop_id": "shop_1789625170165",
+      "status": "delivered",
+      "subtotal": 680,
+      "delivery_fee": 0,
+      "total": 685,
+      "delivery_address": "10, Banjara Hills, Hyderabad - 500034",
+      "delivery_lat": 17.4142,
+      "delivery_lng": 78.4335,
+      "payment_method": "phonepe",
+      "payment_status": "paid",
+      "payment_id": "TXN_PH_46839222",
+      "payment_time": "2026-09-23T09:54:24.045Z",
+      "created_at": "2026-09-23T09:54:24.045Z",
+      "updated_at": "2026-09-23T09:59:44.328Z",
+      "items": [
+        {
+          "id": "item_1790157264045_0",
+          "order_id": "",
+          "product_id": "prod_1790152463557",
+          "product_name": "lkdsjflskdj",
+          "product_price": 40,
+          "product_image_url": "https://images.unsplash.com/photo-1571771894821-ce9b6c11b08e?auto=format&fit=crop&w=400&q=80",
+          "quantity": 17,
+          "total": 680
+        }
+      ],
+      "delivery_partner": {
+        "id": "dp_ravi_kumar",
+        "name": "Ravi Kumar (Rider)",
+        "phone": "+91 98480 99887"
+      }
+    },
+    {
+      "id": "ord_1790157162790",
+      "customer_id": "cust_1",
+      "shop_id": "shop_1789625170165",
+      "status": "delivered",
+      "subtotal": 360,
+      "delivery_fee": 0,
+      "total": 365,
+      "delivery_address": "Banjara Hills, Hyderabad",
+      "delivery_lat": 17.4142,
+      "delivery_lng": 78.4335,
+      "payment_method": "phonepe",
+      "payment_status": "paid",
+      "payment_id": "TXN_PH_93629631",
+      "payment_time": "2026-09-23T09:52:42.789Z",
+      "created_at": "2026-09-23T09:52:42.790Z",
+      "updated_at": "2026-09-23T09:59:54.685Z",
+      "items": [
+        {
+          "id": "item_1790157162790_0",
+          "order_id": "",
+          "product_id": "prod_1790152463557",
+          "product_name": "lkdsjflskdj",
+          "product_price": 40,
+          "product_image_url": "https://images.unsplash.com/photo-1571771894821-ce9b6c11b08e?auto=format&fit=crop&w=400&q=80",
+          "quantity": 9,
+          "total": 360
+        }
+      ],
+      "delivery_partner": {
+        "id": "dp_ravi_kumar",
+        "name": "Ravi Kumar (Rider)",
+        "phone": "+91 98480 99887"
+      }
+    },
     {
       "id": "ord_1790094452141",
       "customer_id": "u_cust_1788886617971",
@@ -1185,5 +1338,5 @@
       "delivered_at": "2026-09-08T11:51:21.963Z"
     }
   ],
-  "lastUpdated": 1790094520497
+  "lastUpdated": 1790257035664
 }
