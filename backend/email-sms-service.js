@@ -114,27 +114,30 @@ async function sendEmail({ to, subject, html, text }) {
 /**
  * Send Real SMS OTP to mobile number
  */
-async function sendSMS({ phone, message, otp }) {
+async function sendSMS({ phone, email, message, otp }) {
   const cleanPhone = (phone || '').replace(/\D/g, '').slice(-10);
-  if (!cleanPhone || cleanPhone.length < 10) {
-    return { success: false, message: 'Invalid mobile number' };
-  }
+  const cleanEmail = (email || '').toLowerCase().trim();
 
   console.log(`\n======================================================`);
-  console.log(`📱 [SMS OTP DISPATCH] To: +91 ${cleanPhone}`);
-  console.log(`🔑 OTP Code: ${otp}`);
-  console.log(`💬 Message: ${message}`);
+  console.log(`📱 [OTP DISPATCH] Phone: ${cleanPhone ? '+91 ' + cleanPhone : 'N/A'} | Email: ${cleanEmail || 'N/A'}`);
+  console.log(`🔑 Generated 6-Digit OTP: ${otp}`);
   console.log(`======================================================\n`);
 
   if (otp) {
-    otpCache.set(cleanPhone, {
-      otp: String(otp),
+    const entry = {
+      otp: String(otp).trim(),
       expiresAt: Date.now() + 10 * 60 * 1000, // 10 minutes expiry
-    });
+    };
+    if (cleanPhone && cleanPhone.length === 10) {
+      otpCache.set(cleanPhone, entry);
+    }
+    if (cleanEmail && cleanEmail.includes('@')) {
+      otpCache.set(cleanEmail, entry);
+    }
   }
 
   // If Fast2SMS API Key is present, dispatch real SMS across Indian telecom networks
-  if (FAST2SMS_API_KEY) {
+  if (FAST2SMS_API_KEY && cleanPhone && cleanPhone.length === 10) {
     try {
       const postData = JSON.stringify({
         route: 'otp',
@@ -179,35 +182,39 @@ async function sendSMS({ phone, message, otp }) {
     }
   }
 
-  return { success: true, provider: 'localmart-sms-gateway', phone: cleanPhone, otp };
+  return { success: true, provider: 'localmart-otp-gateway', phone: cleanPhone, email: cleanEmail, otp };
 }
 
 /**
  * Verify OTP entered by user
  */
-function verifyOTP(phone, userOtp) {
-  const cleanPhone = (phone || '').replace(/\D/g, '').slice(-10);
-  const record = otpCache.get(cleanPhone);
+function verifyOTP(identifier, userOtp) {
+  if (!identifier || !userOtp) {
+    return { success: false, message: 'Please provide phone/email and OTP code' };
+  }
+
+  const cleanPhone = String(identifier).replace(/\D/g, '').slice(-10);
+  const cleanEmail = String(identifier).toLowerCase().trim();
+
+  let record = otpCache.get(cleanPhone) || otpCache.get(cleanEmail);
 
   if (!record) {
-    // Default demo master OTP for safe testing
-    if (userOtp === '123456' || userOtp === '999999') {
-      return { success: true, message: 'Master OTP verified' };
-    }
-    return { success: false, message: 'No OTP requested for this number or OTP expired' };
+    return { success: false, message: 'No OTP requested for this number/email, or OTP has expired.' };
   }
 
   if (Date.now() > record.expiresAt) {
     otpCache.delete(cleanPhone);
+    otpCache.delete(cleanEmail);
     return { success: false, message: 'OTP has expired. Please request a new OTP.' };
   }
 
   if (record.otp === String(userOtp).trim()) {
     otpCache.delete(cleanPhone);
+    otpCache.delete(cleanEmail);
     return { success: true, message: 'OTP verified successfully' };
   }
 
-  return { success: false, message: 'Incorrect OTP code entered.' };
+  return { success: false, message: 'Incorrect verification code. Please check your email or phone.' };
 }
 
 /**
