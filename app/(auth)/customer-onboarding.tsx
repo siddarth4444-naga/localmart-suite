@@ -18,6 +18,7 @@ import * as Location from 'expo-location';
 
 import { useAuthStore } from '../../src/stores/authStore';
 import { useLocationStore } from '../../src/stores/locationStore';
+import { authService } from '../../src/services/authService';
 
 export default function CustomerOnboardingScreen() {
   const router = useRouter();
@@ -132,6 +133,9 @@ export default function CustomerOnboardingScreen() {
     // Save to Zustand stores
     setUser(newUser);
     setLocation(latitude, longitude, fullAddress);
+
+    // Send Automated Welcome Email
+    authService.sendWelcomeNotificationEmail(newUser.email, newUser.name, 'customer').catch(() => {});
 
     setTimeout(() => {
       setSaving(false);

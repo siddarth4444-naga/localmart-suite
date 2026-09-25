@@ -88,6 +88,7 @@ export default function CartScreen() {
       customer_id: user?.id || 'cust_1',
       customer_name: user?.name || 'Customer',
       customer_phone: user?.phone || '9876543210',
+      customer_email: user?.email || 'customer@gmail.com',
       shop_id: activeShopId || '',
       subtotal,
       delivery_fee: deliveryFee,

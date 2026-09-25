@@ -14,6 +14,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../src/stores/authStore';
+import { authService } from '../../src/services/authService';
 
 export default function CustomerLoginScreen() {
   const router = useRouter();
@@ -46,7 +47,7 @@ export default function CustomerLoginScreen() {
   }, [step, timer]);
 
   // Handle Send OTP
-  const handleSendOtp = () => {
+  const handleSendOtp = async () => {
     const cleanPhone = phone.trim();
     if (cleanPhone.length !== 10 || !/^[6-9]\d{9}$/.test(cleanPhone)) {
       Alert.alert('Invalid Phone Number', 'Please enter a valid 10-digit Indian mobile number starting with 6, 7, 8, or 9.');
@@ -54,17 +55,24 @@ export default function CustomerLoginScreen() {
     }
 
     setLoading(true);
-    // Generate a random 4 digit OTP
-    const code = Math.floor(1000 + Math.random() * 9000).toString();
-    setGeneratedOtp(code);
-
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      const res = await authService.sendOTP({ phone: cleanPhone, digits: 4 });
+      const code = res.otp || Math.floor(1000 + Math.random() * 9000).toString();
+      setGeneratedOtp(code);
       setStep('otp');
       setTimer(30);
       setOtp(['', '', '', '']);
       setShowSmsBanner(true);
-    }, 800);
+    } catch (e) {
+      const fallback = Math.floor(1000 + Math.random() * 9000).toString();
+      setGeneratedOtp(fallback);
+      setStep('otp');
+      setTimer(30);
+      setOtp(['', '', '', '']);
+      setShowSmsBanner(true);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Handle OTP Input change
@@ -96,33 +104,38 @@ export default function CustomerLoginScreen() {
   };
 
   // Verify OTP & Navigate
-  const handleVerifyOtp = () => {
+  const handleVerifyOtp = async () => {
     const enteredOtp = otp.join('');
     if (enteredOtp.length !== 4) {
       Alert.alert('Incomplete OTP', 'Please enter all 4 digits of the OTP.');
       return;
     }
 
-    if (enteredOtp !== generatedOtp && enteredOtp !== '1234') {
+    setLoading(true);
+    const cleanPhone = phone.trim();
+    const verifyRes = await authService.verifyOTP(cleanPhone, enteredOtp);
+
+    const isMatch = (verifyRes && verifyRes.success) || enteredOtp === generatedOtp || enteredOtp === '1234';
+
+    if (!isMatch) {
+      setLoading(false);
       Alert.alert('Invalid OTP', `The OTP you entered is incorrect. Please enter ${generatedOtp} or use 1234.`);
       return;
     }
 
-    setLoading(true);
-
     setTimeout(() => {
       setLoading(false);
       // Check if user is returning with the same phone number
-      if (user && user.phone === `+91 ${phone}` && user.name && user.address) {
+      if (user && user.phone === `+91 ${cleanPhone}` && user.name && user.address) {
         router.replace('/(customer)/(tabs)/home');
       } else {
         // Navigate to onboarding to collect Name, Age, Email & Delivery Address
         router.push({
           pathname: '/(auth)/customer-onboarding' as any,
-          params: { phone: `+91 ${phone}` }
+          params: { phone: `+91 ${cleanPhone}` }
         });
       }
-    }, 600);
+    }, 400);
   };
 
   return (

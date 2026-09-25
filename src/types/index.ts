@@ -84,6 +84,7 @@ export interface Order {
   customer_id: string;
   customer_name?: string;
   customer_phone?: string;
+  customer_email?: string;
   shop_id: string;
   status: OrderStatus;
   subtotal: number;
