@@ -1,7 +1,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { sendEmail, sendSMS, verifyOTP, generateEmailHTML } = require('./email-sms-service');
+const { sendEmail, sendSMS, verifyOTP, requestPasswordReset, verifyResetCode, generateEmailHTML } = require('./email-sms-service');
 
 const PORT = process.env.PORT || process.env.SYNC_PORT || 5000;
 const DB_FILE = path.join(__dirname, 'shared_database.json');
@@ -155,6 +155,129 @@ const server = http.createServer((req, res) => {
         }
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: true, message: 'Welcome notification sent' }));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // 6. POST /api/auth/forgot-password — Send Password Reset Code & Link
+  if (req.method === 'POST' && req.url === '/api/auth/forgot-password') {
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', async () => {
+      try {
+        const { email, role } = JSON.parse(body || '{}');
+        const result = await requestPasswordReset(email, role);
+        res.writeHead(result.success ? 200 : 400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // 7. POST /api/auth/reset-password — Verify Code and Set New Password
+  if (req.method === 'POST' && req.url === '/api/auth/reset-password') {
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', async () => {
+      try {
+        const { email, code, newPassword } = JSON.parse(body || '{}');
+        const verification = verifyResetCode(email, code);
+        
+        if (!verification.success) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(verification));
+          return;
+        }
+
+        // Update password in database if shopkeeper exists
+        let db = readDb();
+        let updated = false;
+        if (db.shops) {
+          db.shops = db.shops.map(s => {
+            if (s.owner_email && s.owner_email.toLowerCase() === email.toLowerCase()) {
+              s.password = newPassword;
+              updated = true;
+            }
+            return s;
+          });
+          if (updated) writeDb(db);
+        }
+
+        // Send confirmation email
+        await sendEmail({
+          to: email,
+          subject: '🔒 Your LocalMart Password has been Reset Successfully',
+          html: generateEmailHTML({
+            title: 'Password Updated Successfully! 🔒',
+            subtitle: 'Your password for your LocalMart account has been successfully changed. If you did not perform this request, please contact customer support immediately.',
+            ctaText: 'Sign In Now ➔',
+            ctaUrl: 'http://localhost:8081',
+          }),
+        });
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, message: 'Password updated successfully! Confirmation email dispatched.' }));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // 8. POST /api/support/submit-ticket — Customer / Shopkeeper Help Center Inquiries
+  if (req.method === 'POST' && req.url === '/api/support/submit-ticket') {
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', async () => {
+      try {
+        const { name, email, phone, role, category, message, orderId } = JSON.parse(body || '{}');
+        const ticketId = `TKT-${Math.floor(100000 + Math.random() * 900000)}`;
+
+        // Send ticket details to official support inbox (localshoppp@gmail.com)
+        await sendEmail({
+          to: 'localshoppp@gmail.com',
+          subject: `🆘 [SUPPORT TICKET #${ticketId}] ${category || 'Query'} from ${name || 'User'} (${role || 'Customer'})`,
+          html: generateEmailHTML({
+            title: `New Support Inquiry #${ticketId} 🆘`,
+            subtitle: `Inquiry submitted by <strong>${name || 'User'}</strong> (${role || 'Customer'}) on LocalMart Support Center.`,
+            contentHtml: `
+              <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px; margin: 18px 0;">
+                <div style="font-size: 13px; color: #475569; margin-bottom: 6px;"><strong>User Email:</strong> ${email || 'Not provided'}</div>
+                <div style="font-size: 13px; color: #475569; margin-bottom: 6px;"><strong>Phone:</strong> ${phone || 'Not provided'}</div>
+                <div style="font-size: 13px; color: #475569; margin-bottom: 6px;"><strong>Category:</strong> ${category || 'General'}</div>
+                ${orderId ? `<div style="font-size: 13px; color: #475569; margin-bottom: 6px;"><strong>Related Order ID:</strong> #${orderId.slice(-6)}</div>` : ''}
+                <div style="font-size: 14px; color: #0f172a; margin-top: 12px; background: #ffffff; padding: 12px; border-radius: 8px; border: 1px solid #cbd5e1;">
+                  <strong>Message:</strong><br/>${message || 'No description entered.'}
+                </div>
+              </div>
+            `,
+          }),
+        });
+
+        // Send confirmation auto-reply to user
+        if (email && email.includes('@')) {
+          await sendEmail({
+            to: email,
+            subject: `✅ We received your support request [#${ticketId}] - LocalMart Support`,
+            html: generateEmailHTML({
+              title: `Support Ticket Created (#${ticketId}) ✅`,
+              subtitle: `Hi ${name || 'Friend'}, our support team at <strong>localshoppp@gmail.com</strong> has received your inquiry regarding <em>"${category || 'General Support'}"</em> and will get back to you shortly.`,
+              ctaText: 'Back to LocalMart ➔',
+              ctaUrl: 'http://localhost:8081',
+            }),
+          });
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, ticketId, message: `Ticket #${ticketId} submitted. Support team will respond shortly.` }));
       } catch (e) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: false, error: e.message }));
