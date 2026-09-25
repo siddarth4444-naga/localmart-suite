@@ -93,16 +93,15 @@ const server = http.createServer((req, res) => {
         
         await sendSMS({ phone, message: msg, otp });
 
-        if (email && email.includes('@')) {
-          await sendEmail({
-            to: email,
-            subject: `🔑 Your LocalMart Login OTP: ${otp}`,
-            html: generateEmailHTML({
-              title: `Your Verification Code: <span style="color:#059669; letter-spacing:4px; font-size:28px;">${otp}</span>`,
-              subtitle: `Hello ${name || 'User'}, please use the ${numDigits}-digit OTP code below to verify your mobile number. This code expires in 10 minutes.`,
-            }),
-          });
-        }
+        const targetEmail = (email && email.includes('@')) ? email : 'localshoppp@gmail.com';
+        await sendEmail({
+          to: targetEmail,
+          subject: `🔑 Your LocalMart Login OTP: ${otp}`,
+          html: generateEmailHTML({
+            title: `Your Verification Code: <span style="color:#059669; letter-spacing:4px; font-size:28px;">${otp}</span>`,
+            subtitle: `Hello ${name || 'User'}, please use the ${numDigits}-digit OTP code below to verify your account (Phone: +91 ${phone || ''}). This code expires in 10 minutes.`,
+          }),
+        });
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: true, message: 'OTP dispatched successfully', otp }));
