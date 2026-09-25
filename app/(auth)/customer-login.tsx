@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuthStore } from '../../src/stores/authStore';
 import { authService } from '../../src/services/authService';
+import { firebaseAuth, RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from '../../src/lib/firebase';
 
 export default function CustomerLoginScreen() {
   const router = useRouter();
@@ -27,6 +28,7 @@ export default function CustomerLoginScreen() {
   const [timer, setTimer] = useState(30);
   const [loading, setLoading] = useState(false);
   const [showSmsBanner, setShowSmsBanner] = useState(false);
+  const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
 
   const otpInputRefs = [
     useRef<TextInput>(null),
@@ -46,7 +48,7 @@ export default function CustomerLoginScreen() {
     return () => clearInterval(interval);
   }, [step, timer]);
 
-  // Handle Send OTP
+  // Handle Send OTP with Google Firebase Phone Auth & Backend Sync
   const handleSendOtp = async () => {
     const cleanPhone = phone.trim();
     if (cleanPhone.length !== 10 || !/^[6-9]\d{9}$/.test(cleanPhone)) {
@@ -55,6 +57,30 @@ export default function CustomerLoginScreen() {
     }
 
     setLoading(true);
+    let firebaseSuccess = false;
+
+    // 1. Trigger Google Firebase Phone Auth SMS
+    try {
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        if (!(window as any).recaptchaVerifier) {
+          (window as any).recaptchaVerifier = new RecaptchaVerifier(firebaseAuth, 'recaptcha-container', {
+            size: 'invisible',
+          });
+        }
+        const confirmation = await signInWithPhoneNumber(
+          firebaseAuth,
+          `+91${cleanPhone}`,
+          (window as any).recaptchaVerifier
+        );
+        setConfirmationResult(confirmation);
+        firebaseSuccess = true;
+        console.log(`✅ [Firebase Phone Auth] Real SMS OTP dispatched to +91${cleanPhone}`);
+      }
+    } catch (fbErr: any) {
+      console.log('Firebase Phone Auth info:', fbErr.message);
+    }
+
+    // 2. Dispatch backend OTP & live email backup
     try {
       const res = await authService.sendOTP({ phone: cleanPhone, digits: 4 });
       const code = res.otp || Math.floor(1000 + Math.random() * 9000).toString();
@@ -113,9 +139,19 @@ export default function CustomerLoginScreen() {
 
     setLoading(true);
     const cleanPhone = phone.trim();
-    const verifyRes = await authService.verifyOTP(cleanPhone, enteredOtp);
 
-    const isMatch = (verifyRes && verifyRes.success) || enteredOtp === generatedOtp || enteredOtp === '1234';
+    // 1. Try Firebase confirmation if available
+    let fbVerified = false;
+    if (confirmationResult) {
+      try {
+        await confirmationResult.confirm(enteredOtp);
+        fbVerified = true;
+      } catch (e) {}
+    }
+
+    // 2. Validate with backend / local
+    const verifyRes = await authService.verifyOTP(cleanPhone, enteredOtp);
+    const isMatch = fbVerified || (verifyRes && verifyRes.success) || enteredOtp === generatedOtp || enteredOtp === '1234';
 
     if (!isMatch) {
       setLoading(false);
