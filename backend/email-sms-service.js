@@ -4,10 +4,11 @@ const http = require('http');
 // Configuration from environment variables
 const SMTP_HOST = process.env.SMTP_HOST || 'smtp.gmail.com';
 const SMTP_PORT = process.env.SMTP_PORT || 587;
-const SMTP_USER = process.env.SMTP_USER || process.env.EMAIL_USER || '';
+const SMTP_USER = process.env.SMTP_USER || process.env.EMAIL_USER || 'localshoppp@gmail.com';
 const SMTP_PASS = process.env.SMTP_PASS || process.env.EMAIL_PASS || '';
 const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
 const FAST2SMS_API_KEY = process.env.FAST2SMS_API_KEY || '';
+const STORE_EMAIL = 'localshoppp@gmail.com';
 
 // Active in-memory OTP cache for verification
 const otpCache = new Map();
@@ -22,7 +23,8 @@ async function sendEmail({ to, subject, html, text }) {
   }
 
   console.log(`\n======================================================`);
-  console.log(`📧 [AUTOMATED EMAIL DISPATCH] To: ${to}`);
+  console.log(`📧 [AUTOMATED EMAIL DISPATCH] From: LocalMart <${SMTP_USER}>`);
+  console.log(`📫 Recipient: ${to}`);
   console.log(`📌 Subject: ${subject}`);
   console.log(`======================================================\n`);
 
@@ -30,7 +32,7 @@ async function sendEmail({ to, subject, html, text }) {
   if (RESEND_API_KEY) {
     try {
       const payload = JSON.stringify({
-        from: 'LocalMart <onboarding@resend.dev>',
+        from: `LocalMart Store <${SMTP_USER}>`,
         to: [to],
         subject,
         html,
