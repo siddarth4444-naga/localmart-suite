@@ -37,6 +37,72 @@ export default function ShopkeeperLoginScreen() {
   const [loading, setLoading] = useState(false);
   const [successModal, setSuccessModal] = useState<AuthResult | null>(null);
 
+  // Forgot Password State
+  const [showForgotModal, setShowForgotModal] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotCode, setForgotCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [forgotStep, setForgotStep] = useState<'request' | 'verify'>('request');
+  const [forgotLoading, setForgotLoading] = useState(false);
+
+  // Handle Request Password Reset Email
+  const handleSendResetEmail = async () => {
+    const clean = forgotEmail.trim().toLowerCase();
+    if (!clean || !clean.includes('@')) {
+      Alert.alert('Invalid Email', 'Please enter a valid email address.');
+      return;
+    }
+
+    setForgotLoading(true);
+    const res = await authService.forgotPassword(clean, 'shopkeeper');
+    setForgotLoading(false);
+
+    if (res.success) {
+      Alert.alert(
+        'Reset Email Dispatched! ✉️',
+        `A 6-digit security reset code has been sent from localshoppp@gmail.com to ${clean}. Please check your inbox and enter the code below.`
+      );
+      setForgotStep('verify');
+    } else {
+      Alert.alert('Error', res.message || 'Failed to dispatch reset email.');
+    }
+  };
+
+  // Handle Confirm New Password
+  const handleConfirmResetPassword = async () => {
+    if (!forgotCode.trim() || forgotCode.trim().length < 4) {
+      Alert.alert('Incomplete Code', 'Please enter the 6-digit reset code sent to your email.');
+      return;
+    }
+    if (!newPassword || newPassword.length < 6) {
+      Alert.alert('Weak Password', 'New password must be at least 6 characters long.');
+      return;
+    }
+
+    setForgotLoading(true);
+    const res = await authService.resetPassword(forgotEmail, forgotCode, newPassword);
+    setForgotLoading(false);
+
+    if (res.success) {
+      Alert.alert(
+        'Password Reset Successful! 🎉',
+        'Your password has been updated. You can now log in with your new password.',
+        [
+          {
+            text: 'Sign In',
+            onPress: () => {
+              setShowForgotModal(false);
+              setEmail(forgotEmail);
+              setPassword(newPassword);
+            }
+          }
+        ]
+      );
+    } else {
+      Alert.alert('Verification Error', res.message || 'Invalid or expired reset code. Please try again.');
+    }
+  };
+
   const handleAuthSubmit = async () => {
     const cleanEmail = email.trim().toLowerCase();
     
@@ -238,6 +304,20 @@ export default function ShopkeeperLoginScreen() {
               </View>
             </View>
 
+            {/* Forgot Password Link in Sign In mode */}
+            {mode === 'signin' && (
+              <TouchableOpacity 
+                style={{ alignSelf: 'flex-end', marginTop: 4, marginBottom: 16 }}
+                onPress={() => {
+                  setForgotEmail(email);
+                  setForgotStep('request');
+                  setShowForgotModal(true);
+                }}
+              >
+                <Text style={{ color: '#059669', fontSize: 13, fontWeight: '700' }}>Forgot Password? Reset via Email</Text>
+              </TouchableOpacity>
+            )}
+
             {/* Email notification notice */}
             <View style={styles.emailNoticeBox}>
               <Ionicons name="mail" size={16} color="#059669" />
@@ -282,6 +362,116 @@ export default function ShopkeeperLoginScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Forgot Password Modal */}
+      {showForgotModal && (
+        <Modal visible={true} transparent={true} animationType="slide">
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalCard}>
+              <TouchableOpacity 
+                style={{ position: 'absolute', top: 16, right: 16, zIndex: 10 }}
+                onPress={() => setShowForgotModal(false)}
+              >
+                <Ionicons name="close-circle" size={28} color="#94A3B8" />
+              </TouchableOpacity>
+
+              <View style={[styles.modalIconCircle, { backgroundColor: '#059669' }]}>
+                <Ionicons name="key-outline" size={36} color="#FFFFFF" />
+              </View>
+
+              <Text style={styles.modalSuccessTitle}>Reset Store Password</Text>
+              <Text style={{ fontSize: 13, color: '#64748B', textAlign: 'center', marginBottom: 18 }}>
+                {forgotStep === 'request'
+                  ? 'Enter your registered shopkeeper email. We will send you a 6-digit security code from localshoppp@gmail.com.'
+                  : `Enter the 6-digit security code sent to ${forgotEmail} and choose a new password.`}
+              </Text>
+
+              {forgotStep === 'request' ? (
+                <>
+                  <View style={[styles.inputContainer, { width: '100%', marginBottom: 16 }]}>
+                    <Ionicons name="mail-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Enter registered email"
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      value={forgotEmail}
+                      onChangeText={setForgotEmail}
+                      placeholderTextColor="#9CA3AF"
+                    />
+                  </View>
+
+                  <TouchableOpacity 
+                    style={[styles.modalProceedBtn, forgotLoading && { opacity: 0.7 }]}
+                    onPress={handleSendResetEmail}
+                    disabled={forgotLoading}
+                  >
+                    {forgotLoading ? (
+                      <ActivityIndicator color="#FFFFFF" size="small" />
+                    ) : (
+                      <>
+                        <Ionicons name="paper-plane" size={18} color="#FFFFFF" />
+                        <Text style={styles.modalProceedBtnText}>Send Reset Code to Email</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <View style={[styles.inputContainer, { width: '100%', marginBottom: 12 }]}>
+                    <Ionicons name="shield-checkmark-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="6-Digit Reset Code (e.g. 123456)"
+                      keyboardType="number-pad"
+                      maxLength={6}
+                      value={forgotCode}
+                      onChangeText={setForgotCode}
+                      placeholderTextColor="#9CA3AF"
+                    />
+                  </View>
+
+                  <View style={[styles.inputContainer, { width: '100%', marginBottom: 16 }]}>
+                    <Ionicons name="lock-closed-outline" size={20} color="#9CA3AF" style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="New Password (min 6 chars)"
+                      secureTextEntry
+                      value={newPassword}
+                      onChangeText={setNewPassword}
+                      placeholderTextColor="#9CA3AF"
+                    />
+                  </View>
+
+                  <TouchableOpacity 
+                    style={[styles.modalProceedBtn, forgotLoading && { opacity: 0.7 }]}
+                    onPress={handleConfirmResetPassword}
+                    disabled={forgotLoading}
+                  >
+                    {forgotLoading ? (
+                      <ActivityIndicator color="#FFFFFF" size="small" />
+                    ) : (
+                      <>
+                        <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" />
+                        <Text style={styles.modalProceedBtnText}>Update & Save Password</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+
+                  <TouchableOpacity 
+                    style={{ marginTop: 12 }}
+                    onPress={() => setForgotStep('request')}
+                  >
+                    <Text style={{ color: '#64748B', fontSize: 12, fontWeight: '600', textAlign: 'center' }}>
+                      Didn't receive email? Tap to resend
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </View>
+          </View>
+        </Modal>
+      )}
 
       {/* Success Confirmation Modal */}
       {successModal && (

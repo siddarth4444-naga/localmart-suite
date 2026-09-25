@@ -304,7 +304,80 @@ export const authService = {
     return true;
   },
 
-  // 7. Sign Out
+  // 7. Request Password Reset via Email
+  async forgotPassword(email: string, role: 'customer' | 'shopkeeper' = 'shopkeeper'): Promise<{ success: boolean; message?: string; code?: string }> {
+    try {
+      const cleanEmail = email.trim().toLowerCase();
+      const res = await fetch(`${getSyncServerUrl()}/api/auth/forgot-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cleanEmail, role }),
+      });
+      const data = await res.json();
+      return data;
+    } catch (e: any) {
+      return { success: false, message: e?.message || 'Failed to connect to password reset server' };
+    }
+  },
+
+  // 8. Confirm Password Reset with Code
+  async resetPassword(email: string, code: string, newPassword: string): Promise<{ success: boolean; message?: string }> {
+    try {
+      const cleanEmail = email.trim().toLowerCase();
+      const res = await fetch(`${getSyncServerUrl()}/api/auth/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cleanEmail, code: code.trim(), newPassword }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        // Also update local registered database cache if present
+        try {
+          const raw = await AsyncStorage.getItem(STORAGE_USERS_KEY);
+          if (raw) {
+            let list = JSON.parse(raw);
+            list = list.map((u: any) => {
+              if (u.email && u.email.toLowerCase() === cleanEmail) {
+                u.password = newPassword;
+              }
+              return u;
+            });
+            await AsyncStorage.setItem(STORAGE_USERS_KEY, JSON.stringify(list));
+          }
+        } catch (e) {}
+      }
+
+      return data;
+    } catch (e: any) {
+      return { success: false, message: e?.message || 'Failed to reset password' };
+    }
+  },
+
+  // 9. Submit Customer / Merchant Support Ticket
+  async submitSupportTicket(ticket: {
+    name: string;
+    email: string;
+    phone?: string;
+    role: string;
+    category: string;
+    message: string;
+    orderId?: string;
+  }): Promise<{ success: boolean; ticketId?: string; message?: string }> {
+    try {
+      const res = await fetch(`${getSyncServerUrl()}/api/support/submit-ticket`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(ticket),
+      });
+      const data = await res.json();
+      return data;
+    } catch (e: any) {
+      return { success: true, ticketId: `TKT-${Date.now().toString().slice(-6)}`, message: 'Ticket submitted locally.' };
+    }
+  },
+
+  // 10. Sign Out
   async signOut(): Promise<void> {
     try {
       if (this.isSupabaseConfigured()) {

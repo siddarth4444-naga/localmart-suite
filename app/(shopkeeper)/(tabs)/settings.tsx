@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Switch, TouchableOpacity, Alert, Modal, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Switch, TouchableOpacity, Alert, Modal, TextInput, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
 
 import { useShopStore } from '../../../src/stores/shopStore';
 import { useAuthStore } from '../../../src/stores/authStore';
+import { authService } from '../../../src/services/authService';
 
 const OPENING_PRESETS = ['06:00 AM', '06:30 AM', '07:00 AM', '07:30 AM', '08:00 AM', '09:00 AM'];
 const CLOSING_PRESETS = ['09:00 PM', '09:30 PM', '10:00 PM', '10:30 PM', '11:00 PM', '11:30 PM'];
@@ -39,6 +40,115 @@ export default function SettingsScreen() {
   const [is24HoursInput, setIs24HoursInput] = useState(false);
   const [openTimeInput, setOpenTimeInput] = useState('');
   const [closeTimeInput, setCloseTimeInput] = useState('');
+
+  // Support Modal State
+  const [supportModalVisible, setSupportModalVisible] = useState(false);
+  const [supportCategory, setSupportCategory] = useState('Store Operation');
+  const [supportMessage, setSupportMessage] = useState('');
+  const [supportLoading, setSupportLoading] = useState(false);
+
+  // Password Reset State
+  const [resetModalVisible, setResetModalVisible] = useState(false);
+  const [resetEmail, setResetEmail] = useState(activeShop?.owner_email || user?.email || 'localshoppp@gmail.com');
+  const [resetCode, setResetCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [resetStep, setResetStep] = useState<'request' | 'verify'>('request');
+  const [resetLoading, setResetLoading] = useState(false);
+
+  // Dispatch Support Ticket to localshoppp@gmail.com
+  const handleSubmitSupport = async () => {
+    if (!supportMessage.trim()) {
+      Alert.alert('Empty Message', 'Please enter your message or query.');
+      return;
+    }
+
+    setSupportLoading(true);
+    const res = await authService.submitSupportTicket({
+      name: activeShop?.name || user?.name || 'Shopkeeper',
+      email: activeShop?.owner_email || user?.email || 'localshoppp@gmail.com',
+      phone: activeShop?.phone || user?.phone || '+91 98480 12345',
+      role: 'Shopkeeper / Merchant',
+      category: supportCategory,
+      message: supportMessage.trim(),
+    });
+    setSupportLoading(false);
+
+    if (res.success) {
+      Alert.alert(
+        'Support Ticket Dispatched! ✉️',
+        `Your inquiry has been emailed to localshoppp@gmail.com (Reference #${res.ticketId || 'TKT-1002'}). Our partner team will respond quickly.`,
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              setSupportModalVisible(false);
+              setSupportMessage('');
+            }
+          }
+        ]
+      );
+    } else {
+      Alert.alert('Error', res.message || 'Failed to submit support request.');
+    }
+  };
+
+  // Dispatch Reset Code via Email
+  const handleSendResetEmail = async () => {
+    const clean = resetEmail.trim().toLowerCase();
+    if (!clean || !clean.includes('@')) {
+      Alert.alert('Invalid Email', 'Please enter a valid email address.');
+      return;
+    }
+
+    setResetLoading(true);
+    const res = await authService.forgotPassword(clean, 'shopkeeper');
+    setResetLoading(false);
+
+    if (res.success) {
+      Alert.alert(
+        'Reset Code Dispatched! ✉️',
+        `A 6-digit security code has been sent from localshoppp@gmail.com to ${clean}. Please check your inbox and enter the code below.`
+      );
+      setResetStep('verify');
+    } else {
+      Alert.alert('Error', res.message || 'Failed to send reset email.');
+    }
+  };
+
+  // Confirm Reset Password
+  const handleConfirmResetPassword = async () => {
+    if (!resetCode.trim() || resetCode.trim().length < 4) {
+      Alert.alert('Incomplete Code', 'Please enter the 6-digit reset code sent to your email.');
+      return;
+    }
+    if (!newPassword || newPassword.length < 6) {
+      Alert.alert('Weak Password', 'New password must be at least 6 characters long.');
+      return;
+    }
+
+    setResetLoading(true);
+    const res = await authService.resetPassword(resetEmail, resetCode, newPassword);
+    setResetLoading(false);
+
+    if (res.success) {
+      Alert.alert(
+        'Password Updated! 🎉',
+        'Your shopkeeper account password has been changed successfully. A confirmation email has been dispatched to your inbox.',
+        [
+          {
+            text: 'Done',
+            onPress: () => {
+              setResetModalVisible(false);
+              setResetCode('');
+              setNewPassword('');
+            }
+          }
+        ]
+      );
+    } else {
+      Alert.alert('Verification Error', res.message || 'Invalid reset code. Please try again.');
+    }
+  };
 
   useEffect(() => {
     if (activeShop) {
@@ -183,6 +293,30 @@ export default function SettingsScreen() {
         <InfoRow icon="cart" label="Min Order" value={`₹${activeShop.min_order_amount}`} />
       </Section>
 
+      <Section title="Support & Security Desk">
+        <InfoRow 
+          icon="mail" 
+          label="Official Store Email" 
+          value="localshoppp@gmail.com" 
+        />
+        <InfoRow 
+          icon="headset" 
+          label="Partner Support & Help" 
+          value="Contact Support Desk ➔" 
+          onPress={() => setSupportModalVisible(true)} 
+        />
+        <InfoRow 
+          icon="key" 
+          label="Account Password" 
+          value="Reset Password via Email ➔" 
+          onPress={() => {
+            setResetEmail(activeShop.owner_email || user?.email || 'localshoppp@gmail.com');
+            setResetStep('request');
+            setResetModalVisible(true);
+          }} 
+        />
+      </Section>
+
       {/* Quick Edit in Dev Mode Button */}
       <TouchableOpacity 
         style={styles.editShopCta}
@@ -199,6 +333,224 @@ export default function SettingsScreen() {
         <Ionicons name="grid-outline" size={18} color="#475569" />
         <Text style={styles.switchModeBtnText}>Switch Portal Mode</Text>
       </TouchableOpacity>
+
+      {/* Merchant Support Modal */}
+      <Modal
+        visible={supportModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setSupportModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalTitleRow}>
+                <Ionicons name="headset" size={22} color="#10B981" />
+                <Text style={styles.modalTitle}>Merchant Support Desk</Text>
+              </View>
+              <TouchableOpacity onPress={() => setSupportModalVisible(false)}>
+                <Ionicons name="close" size={22} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={{ fontSize: 13, color: '#64748B', marginBottom: 12 }}>
+              Official Partner Desk: <Text style={{ fontWeight: '800', color: '#059669' }}>localshoppp@gmail.com</Text>
+            </Text>
+
+            <Text style={{ fontSize: 12, fontWeight: '700', color: '#475569', marginBottom: 6 }}>Category</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+              {['Store Operation', 'Orders & Billing', 'Delivery Partner', 'Other'].map(cat => (
+                <TouchableOpacity 
+                  key={cat}
+                  style={[
+                    { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: '#F1F5F9', borderWidth: 1, borderColor: '#E2E8F0' },
+                    supportCategory === cat && { backgroundColor: '#ECFDF5', borderColor: '#10B981' }
+                  ]}
+                  onPress={() => setSupportCategory(cat)}
+                >
+                  <Text style={{ fontSize: 12, color: supportCategory === cat ? '#059669' : '#64748B', fontWeight: supportCategory === cat ? '800' : '600' }}>
+                    {cat}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={{ fontSize: 12, fontWeight: '700', color: '#475569', marginBottom: 6 }}>Your Message / Query *</Text>
+            <TextInput
+              style={{
+                width: '100%',
+                backgroundColor: '#F8FAFC',
+                borderWidth: 1,
+                borderColor: '#CBD5E1',
+                borderRadius: 10,
+                paddingHorizontal: 12,
+                paddingVertical: 10,
+                fontSize: 14,
+                color: '#0F172A',
+                height: 80,
+                textAlignVertical: 'top',
+                marginBottom: 16,
+              }}
+              placeholder="Describe your issue or request..."
+              multiline
+              numberOfLines={3}
+              value={supportMessage}
+              onChangeText={setSupportMessage}
+              placeholderTextColor="#94A3B8"
+            />
+
+            <View style={styles.modalBtnRow}>
+              <TouchableOpacity
+                style={styles.modalCancelBtn}
+                onPress={() => setSupportModalVisible(false)}
+              >
+                <Text style={styles.modalCancelBtnText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalSaveBtn, supportLoading && { opacity: 0.7 }]}
+                onPress={handleSubmitSupport}
+                disabled={supportLoading}
+              >
+                {supportLoading ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                  <>
+                    <Ionicons name="paper-plane" size={16} color="#FFFFFF" />
+                    <Text style={styles.modalSaveBtnText}>Send to localshoppp@gmail.com</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Password Reset Modal */}
+      <Modal
+        visible={resetModalVisible}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setResetModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalTitleRow}>
+                <Ionicons name="key" size={22} color="#059669" />
+                <Text style={styles.modalTitle}>Reset Store Password</Text>
+              </View>
+              <TouchableOpacity onPress={() => setResetModalVisible(false)}>
+                <Ionicons name="close" size={22} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={{ fontSize: 13, color: '#64748B', marginBottom: 14 }}>
+              {resetStep === 'request'
+                ? 'We will dispatch a 6-digit security reset code from localshoppp@gmail.com to your email.'
+                : `Enter the 6-digit security code sent to ${resetEmail} and your new password.`}
+            </Text>
+
+            {resetStep === 'request' ? (
+              <>
+                <TextInput
+                  style={{
+                    width: '100%',
+                    backgroundColor: '#F8FAFC',
+                    borderWidth: 1,
+                    borderColor: '#CBD5E1',
+                    borderRadius: 10,
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    fontSize: 14,
+                    color: '#0F172A',
+                    marginBottom: 16,
+                  }}
+                  placeholder="Enter registered email"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  value={resetEmail}
+                  onChangeText={setResetEmail}
+                  placeholderTextColor="#94A3B8"
+                />
+
+                <TouchableOpacity
+                  style={[styles.modalSaveBtn, resetLoading && { opacity: 0.7 }]}
+                  onPress={handleSendResetEmail}
+                  disabled={resetLoading}
+                >
+                  {resetLoading ? (
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                  ) : (
+                    <>
+                      <Ionicons name="mail" size={16} color="#FFFFFF" />
+                      <Text style={styles.modalSaveBtnText}>Dispatch Reset Code</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <TextInput
+                  style={{
+                    width: '100%',
+                    backgroundColor: '#F8FAFC',
+                    borderWidth: 1,
+                    borderColor: '#CBD5E1',
+                    borderRadius: 10,
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    fontSize: 14,
+                    color: '#0F172A',
+                    marginBottom: 12,
+                  }}
+                  placeholder="6-Digit Reset Code (e.g. 123456)"
+                  keyboardType="number-pad"
+                  maxLength={6}
+                  value={resetCode}
+                  onChangeText={setResetCode}
+                  placeholderTextColor="#94A3B8"
+                />
+
+                <TextInput
+                  style={{
+                    width: '100%',
+                    backgroundColor: '#F8FAFC',
+                    borderWidth: 1,
+                    borderColor: '#CBD5E1',
+                    borderRadius: 10,
+                    paddingHorizontal: 12,
+                    paddingVertical: 10,
+                    fontSize: 14,
+                    color: '#0F172A',
+                    marginBottom: 16,
+                  }}
+                  placeholder="New Password (min 6 chars)"
+                  secureTextEntry
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  placeholderTextColor="#94A3B8"
+                />
+
+                <TouchableOpacity
+                  style={[styles.modalSaveBtn, resetLoading && { opacity: 0.7 }]}
+                  onPress={handleConfirmResetPassword}
+                  disabled={resetLoading}
+                >
+                  {resetLoading ? (
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                  ) : (
+                    <>
+                      <Ionicons name="checkmark-circle" size={16} color="#FFFFFF" />
+                      <Text style={styles.modalSaveBtnText}>Update & Save Password</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
 
       {/* Timing Edit Modal */}
       <Modal
