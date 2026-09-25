@@ -84,11 +84,9 @@ const server = http.createServer((req, res) => {
     req.on('data', c => body += c);
     req.on('end', async () => {
       try {
-        const { phone, email, name, digits } = JSON.parse(body || '{}');
-        const numDigits = digits === 6 ? 6 : 4;
-        const otp = numDigits === 6 
-          ? Math.floor(100000 + Math.random() * 900000)
-          : Math.floor(1000 + Math.random() * 9000);
+        const { phone, email, name } = JSON.parse(body || '{}');
+        // Generate a fresh, unpredictable 6-digit random OTP
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
         const msg = `Your LocalMart verification code is ${otp}. Valid for 10 minutes. Do not share this OTP with anyone.`;
         
         await sendSMS({ phone, message: msg, otp });
@@ -99,12 +97,12 @@ const server = http.createServer((req, res) => {
           subject: `🔑 Your LocalMart Login OTP: ${otp}`,
           html: generateEmailHTML({
             title: `Your Verification Code: <span style="color:#059669; letter-spacing:4px; font-size:28px;">${otp}</span>`,
-            subtitle: `Hello ${name || 'User'}, please use the ${numDigits}-digit OTP code below to verify your account (Phone: +91 ${phone || ''}). This code expires in 10 minutes.`,
+            subtitle: `Hello ${name || 'User'}, please use the 6-digit OTP code below to verify your account (Phone: +91 ${phone || ''}). This code expires in 10 minutes.`,
           }),
         });
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true, message: 'OTP dispatched successfully', otp }));
+        res.end(JSON.stringify({ success: true, message: 'OTP dispatched successfully via SMS and Email' }));
       } catch (e) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: false, error: e.message }));
