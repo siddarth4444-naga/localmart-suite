@@ -34,30 +34,56 @@ if (nodemailer && SMTP_USER && SMTP_PASS) {
 const otpCache = new Map();
 
 const dns = require('dns');
-try {
-  dns.setServers(['8.8.8.8', '1.1.1.1']);
-} catch (e) {}
+
+const KNOWN_DOMAINS = new Set([
+  'gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.co.in', 'yahoo.co.uk',
+  'outlook.com', 'hotmail.com', 'live.com', 'msn.com',
+  'icloud.com', 'me.com', 'mac.com',
+  'zoho.com', 'zoho.in', 'rediffmail.com',
+  'proton.me', 'protonmail.com', 'aol.com', 'mail.com', 'localmart.app'
+]);
 
 /**
- * Check if the email domain actually exists and has valid mail exchange servers
+ * Check if the email address format and domain are valid
  */
 async function validateEmailDomain(email) {
-  if (!email || !email.includes('@') || !email.includes('.')) {
+  if (!email || typeof email !== 'string') {
+    return { valid: false, error: 'Email address cannot be empty' };
+  }
+  
+  const clean = email.trim().toLowerCase();
+  const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+  if (!emailRegex.test(clean)) {
     return { valid: false, error: 'Invalid email address format' };
   }
-  const domain = email.split('@')[1].trim().toLowerCase();
+
+  const parts = clean.split('@');
+  if (parts.length !== 2) {
+    return { valid: false, error: 'Invalid email address' };
+  }
+
+  const domain = parts[1];
+
+  // 1. Instant pass for all standard email providers
+  if (KNOWN_DOMAINS.has(domain)) {
+    return { valid: true };
+  }
+
+  // 2. Fallback check for custom corporate / university domains
   try {
     const mx = await dns.promises.resolveMx(domain);
-    if (!mx || mx.length === 0) {
-      return { valid: false, error: 'Email domain does not exist or has no active mail server' };
+    if (mx && mx.length > 0) {
+      return { valid: true };
     }
-    return { valid: true };
   } catch (err) {
-    if (err.code === 'ENOTFOUND' || err.code === 'ENODATA') {
-      return { valid: false, error: 'Email address not found (domain does not exist)' };
+    // If domain definitely doesn't exist
+    if (err.code === 'ENOTFOUND') {
+      return { valid: false, error: 'Email domain does not exist' };
     }
-    return { valid: true }; // Allow through if local DNS lookup timeout
   }
+
+  // Allow through to SMTP transporter for direct delivery
+  return { valid: true };
 }
 
 /**
