@@ -10,7 +10,7 @@ const SMTP_USER = process.env.SMTP_USER || process.env.EMAIL_USER || 'localshopp
 const rawPass = process.env.SMTP_PASS || process.env.EMAIL_PASS || 'drfv eozi btgh iyrm';
 const SMTP_PASS = rawPass.replace(/\s+/g, '');
 const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
-const FAST2SMS_API_KEY = process.env.FAST2SMS_API_KEY || '';
+const FAST2SMS_API_KEY = process.env.FAST2SMS_API_KEY || 'XhMli1DZwWuEC3ejtxfRUSG8mYnKrL5zVA94sPdoIk7FgqvaNpkaRB5lP9OyzFx3ncKmNEXsSAG7jUMq';
 const STORE_EMAIL = 'localshoppp@gmail.com';
 
 // Setup Gmail Transporter
@@ -141,25 +141,38 @@ async function sendSMS({ phone, message, otp }) {
         numbers: cleanPhone,
       });
 
-      const req = https.request({
-        hostname: 'www.fast2sms.com',
-        path: '/dev/bulkV2',
-        method: 'POST',
-        headers: {
-          'authorization': FAST2SMS_API_KEY,
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(postData),
-        },
-      }, (res) => {
-        let resp = '';
-        res.on('data', c => resp += c);
-        res.on('end', () => console.log(`[Fast2SMS Response]`, resp));
+      const response = await new Promise((resolve) => {
+        const req = https.request({
+          hostname: 'www.fast2sms.com',
+          path: '/dev/bulkV2',
+          method: 'POST',
+          headers: {
+            'authorization': FAST2SMS_API_KEY,
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(postData),
+          },
+        }, (res) => {
+          let resp = '';
+          res.on('data', c => resp += c);
+          res.on('end', () => {
+            console.log(`📡 [Fast2SMS Telecom Response]:`, resp);
+            try {
+              resolve(JSON.parse(resp));
+            } catch (e) {
+              resolve({ return: false, message: resp });
+            }
+          });
+        });
+
+        req.on('error', e => {
+          console.error('❌ [Fast2SMS Request Error]:', e.message);
+          resolve({ return: false, error: e.message });
+        });
+        req.write(postData);
+        req.end();
       });
 
-      req.on('error', e => console.error('[Fast2SMS Error]', e.message));
-      req.write(postData);
-      req.end();
-      return { success: true, provider: 'fast2sms' };
+      return { success: response.return === true, provider: 'fast2sms', data: response };
     } catch (e) {
       console.error('[SMS Error]', e);
     }
