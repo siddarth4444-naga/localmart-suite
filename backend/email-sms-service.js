@@ -33,13 +33,47 @@ if (nodemailer && SMTP_USER && SMTP_PASS) {
 // Active in-memory OTP cache for verification
 const otpCache = new Map();
 
+const dns = require('dns');
+try {
+  dns.setServers(['8.8.8.8', '1.1.1.1']);
+} catch (e) {}
+
+/**
+ * Check if the email domain actually exists and has valid mail exchange servers
+ */
+async function validateEmailDomain(email) {
+  if (!email || !email.includes('@') || !email.includes('.')) {
+    return { valid: false, error: 'Invalid email address format' };
+  }
+  const domain = email.split('@')[1].trim().toLowerCase();
+  try {
+    const mx = await dns.promises.resolveMx(domain);
+    if (!mx || mx.length === 0) {
+      return { valid: false, error: 'Email domain does not exist or has no active mail server' };
+    }
+    return { valid: true };
+  } catch (err) {
+    if (err.code === 'ENOTFOUND' || err.code === 'ENODATA') {
+      return { valid: false, error: 'Email address not found (domain does not exist)' };
+    }
+    return { valid: true }; // Allow through if local DNS lookup timeout
+  }
+}
+
 /**
  * Send real email via Gmail SMTP or Resend API
  */
 async function sendEmail({ to, subject, html, text }) {
   if (!to || !to.includes('@')) {
     console.log(`[Email] Skipped sending to invalid email: "${to}"`);
-    return { success: false, message: 'Invalid recipient email' };
+    return { success: false, error: 'Email address not found (invalid format)' };
+  }
+
+  // Verify domain existence
+  const check = await validateEmailDomain(to);
+  if (!check.valid) {
+    console.error(`❌ [Email Validation Failed]: ${check.error} for "${to}"`);
+    return { success: false, error: check.error };
   }
 
   console.log(`\n======================================================`);
@@ -62,6 +96,9 @@ async function sendEmail({ to, subject, html, text }) {
       return { success: true, provider: 'gmail-smtp', messageId: info.messageId };
     } catch (err) {
       console.error('❌ [Gmail SMTP Error]:', err.message);
+      if (err.message && (err.message.includes('550') || err.message.includes('No recipients') || err.message.includes('does not exist'))) {
+        return { success: false, error: 'Email address not found. Please check your spelling.' };
+      }
     }
   }
 

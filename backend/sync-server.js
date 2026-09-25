@@ -92,7 +92,7 @@ const server = http.createServer((req, res) => {
         await sendSMS({ phone, message: msg, otp });
 
         const targetEmail = (email && email.includes('@')) ? email : 'localshoppp@gmail.com';
-        await sendEmail({
+        const emailRes = await sendEmail({
           to: targetEmail,
           subject: `🔑 Your LocalMart Login OTP: ${otp}`,
           html: generateEmailHTML({
@@ -100,6 +100,15 @@ const server = http.createServer((req, res) => {
             subtitle: `Hello ${name || 'User'}, please use the 6-digit OTP code below to verify your account (Phone: +91 ${phone || ''}). This code expires in 10 minutes.`,
           }),
         });
+
+        if (emailRes && emailRes.success === false) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ 
+            success: false, 
+            error: emailRes.error || 'Email address not found. Please check your spelling.' 
+          }));
+          return;
+        }
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: true, message: 'OTP dispatched successfully via SMS and Email' }));
