@@ -2,7 +2,28 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase, isSupabaseLive } from '../lib/supabase';
 import { useShopStore } from '../stores/shopStore';
 
-const SYNC_SERVER_URL = process.env.EXPO_PUBLIC_SYNC_SERVER_URL || 'http://localhost:5000';
+export const getSyncServerUrl = (): string => {
+  let url = process.env.EXPO_PUBLIC_SYNC_SERVER_URL;
+  if (url) {
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = `https://${url}`;
+    }
+    return url.replace(/\/$/, '');
+  }
+
+  // Cloud & Mobile detection
+  if (typeof window !== 'undefined' && window.location && window.location.hostname) {
+    const host = window.location.hostname;
+    if (host.includes('onrender.com') || host.includes('render.com')) {
+      return 'https://localmart-sync-api.onrender.com';
+    }
+    if (host === 'localhost' || host === '127.0.0.1' || host.startsWith('192.168.') || host.startsWith('10.')) {
+      return `http://${host}:5000`;
+    }
+  }
+
+  return 'https://localmart-sync-api.onrender.com';
+};
 
 // Web Broadcast Channel for instant sub-millisecond tab-to-tab sync on web
 let broadcastChannel: any = null;
@@ -65,7 +86,7 @@ export const realtimeSync = {
 
     // B. Push to shared Local Sync Server (Cross-Port / Cross-App Bridge)
     try {
-      fetch(`${SYNC_SERVER_URL}/api/sync`, {
+      fetch(`${getSyncServerUrl()}/api/sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(msg),
@@ -94,7 +115,7 @@ export const realtimeSync = {
           if (eventSource) {
             try { eventSource.close(); } catch (e) {}
           }
-          eventSource = new EventSource(`${SYNC_SERVER_URL}/api/events`);
+          eventSource = new EventSource(`${getSyncServerUrl()}/api/events`);
           eventSource.onmessage = (event: any) => {
             try {
               const data = JSON.parse(event.data);
@@ -161,7 +182,7 @@ export const realtimeSync = {
 
   async fetchFromServer() {
     try {
-      const res = await fetch(`${SYNC_SERVER_URL}/api/sync`, { method: 'GET' });
+      const res = await fetch(`${getSyncServerUrl()}/api/sync`, { method: 'GET' });
       if (res.ok) {
         const data = await res.json();
         if (data && (data.shops || data.products || data.orders)) {

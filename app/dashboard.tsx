@@ -18,11 +18,11 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useShopStore } from '../../src/stores/shopStore';
-import { useNotificationStore } from '../../src/services/notificationService';
-import { useAuthStore } from '../../src/stores/authStore';
-import { realtimeSync, getSyncServerUrl } from '../../src/services/realtimeSync';
-import { Shop, Product, Order } from '../../src/types';
+import { useShopStore } from '../src/stores/shopStore';
+import { useNotificationStore } from '../src/services/notificationService';
+import { useAuthStore } from '../src/stores/authStore';
+import { realtimeSync, getSyncServerUrl } from '../src/services/realtimeSync';
+import { Shop, Product, Order } from '../types';
 
 const CITY_PRESETS = [
   { name: 'Hyderabad (Banjara Hills)', address: 'Road No. 12, Banjara Hills, Hyderabad', lat: 17.4142, lng: 78.4335 },

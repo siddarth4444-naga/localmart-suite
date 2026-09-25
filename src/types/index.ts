@@ -76,7 +76,7 @@ export interface Product {
 }
 
 export type OrderStatus = 'pending' | 'accepted' | 'preparing' | 'ready' | 'delivery_accepted' | 'picked_up' | 'out_for_delivery' | 'delivered' | 'cancelled';
-export type PaymentMethod = 'online' | 'upi_on_delivery' | 'cod' | 'upi' | 'card';
+export type PaymentMethod = 'phonepe' | 'gpay' | 'card' | 'cod' | 'online' | 'upi' | 'upi_on_delivery';
 export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded';
 
 export interface Order {

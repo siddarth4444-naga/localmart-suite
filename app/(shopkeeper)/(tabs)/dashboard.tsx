@@ -1,11 +1,23 @@
-import React, { useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import React, { useEffect, useCallback, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+  Platform,
+  Modal,
+  FlatList,
+  TextInput,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
 
 import { useShopStore } from '../../../src/stores/shopStore';
 import { useAuthStore } from '../../../src/stores/authStore';
-import { formatPrice, getOrderStatusInfo } from '../../../src/lib/utils';
+import { formatPrice, getOrderStatusInfo, openGoogleMapsDirections, openPhoneCall } from '../../../src/lib/utils';
+import { Order } from '../../../src/types';
 
 export default function ShopkeeperDashboardScreen() {
   const router = useRouter();
@@ -17,7 +29,29 @@ export default function ShopkeeperDashboardScreen() {
     setActiveShopkeeperShopId,
     updateOrderStatus 
   } = useShopStore();
-  const { user } = useAuthStore();
+  const { user, logout } = useAuthStore();
+
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [showEarningsModal, setShowEarningsModal] = useState(false);
+  const [earningsTimeFilter, setEarningsTimeFilter] = useState<'all' | 'today' | 'week' | 'delivered'>('all');
+  const [earningsSearchQuery, setEarningsSearchQuery] = useState('');
+
+  const handleLogout = () => {
+    const doLogout = () => {
+      logout();
+      router.replace('/(auth)/login');
+    };
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      if (window.confirm('Are you sure you want to log out of the Shopkeeper portal?')) {
+        doLogout();
+      }
+    } else {
+      Alert.alert('Log Out', 'Are you sure you want to log out of the Shopkeeper portal?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Log Out', style: 'destructive', onPress: doLogout },
+      ]);
+    }
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -44,18 +78,79 @@ export default function ShopkeeperDashboardScreen() {
   const shopOrders = activeShop ? orders.filter(o => o.shop_id === activeShop.id) : [];
 
   const pendingOrders = shopOrders.filter(o => o.status === 'pending');
-  const acceptedOrders = shopOrders.filter(o => o.status === 'accepted');
-  const revenue = shopOrders
-    .filter(o => o.status === 'delivered')
-    .reduce((acc, o) => acc + o.total, 0);
+  const acceptedOrders = shopOrders.filter(o => o.status === 'accepted' || o.status === 'preparing');
+  const deliveredOrders = shopOrders.filter(o => o.status === 'delivered');
+  const activeOrders = shopOrders.filter(o => 
+    ['pending', 'accepted', 'preparing', 'ready', 'delivery_accepted', 'picked_up', 'out_for_delivery'].includes(o.status)
+  );
+
+  const totalEarnedRevenue = deliveredOrders.reduce((acc, o) => acc + (o.total || 0), 0);
+  const todayDelivered = deliveredOrders.filter(o => new Date(o.created_at).toDateString() === new Date().toDateString());
+  const todayRevenue = todayDelivered.reduce((acc, o) => acc + (o.total || 0), 0);
+  const pipelineAmount = activeOrders.reduce((acc, o) => acc + (o.total || 0), 0);
+
+  // Filtered orders inside Earnings Modal
+  const getModalEarningsOrders = () => {
+    let list = shopOrders;
+    if (earningsTimeFilter === 'today') {
+      list = shopOrders.filter(o => new Date(o.created_at).toDateString() === new Date().toDateString());
+    } else if (earningsTimeFilter === 'week') {
+      const now = Date.now();
+      const oneWeek = 7 * 24 * 60 * 60 * 1000;
+      list = shopOrders.filter(o => (now - new Date(o.created_at).getTime()) <= oneWeek);
+    } else if (earningsTimeFilter === 'delivered') {
+      list = deliveredOrders;
+    }
+
+    if (earningsSearchQuery.trim()) {
+      const q = earningsSearchQuery.toLowerCase().trim();
+      list = list.filter(o => 
+        o.id.toLowerCase().includes(q) ||
+        (o.customer_name && o.customer_name.toLowerCase().includes(q)) ||
+        (o.customer_phone && o.customer_phone.includes(q))
+      );
+    }
+
+    return list;
+  };
+
+  const modalOrders = getModalEarningsOrders();
+  const modalEarningsSum = modalOrders
+    .filter(o => o.status !== 'cancelled')
+    .reduce((sum, o) => sum + (o.total || 0), 0);
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       {/* Active Shop Selector / Title */}
       <View style={styles.welcomeSection}>
-        <View style={styles.storeBadge}>
-          <Ionicons name="storefront" size={14} color="#10B981" />
-          <Text style={styles.storeBadgeText}>SHOPKEEPER PARTNER PORTAL</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <TouchableOpacity 
+            style={styles.headerBackBtn}
+            onPress={() => {
+              if (router.canGoBack()) {
+                router.back();
+              } else {
+                router.replace('/(tabs)/dashboard');
+              }
+            }}
+            accessibilityLabel="Go back"
+          >
+            <Ionicons name="arrow-back" size={20} color="#111827" />
+          </TouchableOpacity>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#D97706', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}>
+            <Ionicons name="storefront" size={15} color="#FFFFFF" />
+            <Text style={{ fontSize: 11, fontWeight: '900', color: '#FFFFFF', letterSpacing: 0.5 }}>SHOPKEEPER PORTAL</Text>
+          </View>
+
+          <TouchableOpacity 
+            style={styles.headerLogoutBtn}
+            onPress={handleLogout}
+            accessibilityLabel="Log Out"
+          >
+            <Ionicons name="log-out-outline" size={16} color="#EF4444" />
+            <Text style={styles.headerLogoutText}>Logout</Text>
+          </TouchableOpacity>
         </View>
 
         {myShops.length > 1 ? (
@@ -82,33 +177,143 @@ export default function ShopkeeperDashboardScreen() {
         <Text style={styles.shopAddress}>📍 {activeShop?.address || 'Set your store location'}</Text>
       </View>
 
-      {/* Stats Cards */}
-      <View style={styles.statsContainer}>
-        <View style={styles.statCard}>
-          <Text style={styles.statValue}>{shopOrders.length}</Text>
-          <Text style={styles.statLabel}>Total Orders</Text>
+      {/* 💰 PROMINENT DASHBOARD TOTAL EARNINGS BANNER (CLICKABLE TO VIEW ORDER HISTORY) */}
+      <TouchableOpacity
+        style={styles.revenueBannerCard}
+        activeOpacity={0.88}
+        onPress={() => setShowEarningsModal(true)}
+      >
+        <View style={styles.revenueBannerHeader}>
+          <View style={styles.revenueBadgeRow}>
+            <View style={styles.rupeeCircle}>
+              <Text style={styles.rupeeIcon}>₹</Text>
+            </View>
+            <View>
+              <Text style={styles.revenueBannerTitle}>TOTAL STORE EARNINGS</Text>
+              <Text style={styles.revenueBannerAmount}>₹{totalEarnedRevenue.toFixed(0)}</Text>
+            </View>
+          </View>
+          <View style={styles.orderDetailBadge}>
+            <Text style={styles.orderDetailBadgeText}>View Order History ➔</Text>
+          </View>
         </View>
-        <View style={styles.statCard}>
-          <Text style={[styles.statValue, { color: '#D97706' }]}>{pendingOrders.length}</Text>
-          <Text style={[styles.statLabel, pendingOrders.length > 0 && { color: '#D97706', fontWeight: '700' }]}>
-            Pending
+
+        <View style={styles.revenueSubRow}>
+          <View style={styles.revenueSubItem}>
+            <Text style={styles.revenueSubLabel}>Today's Earnings</Text>
+            <Text style={styles.revenueSubValue}>₹{todayRevenue.toFixed(0)}</Text>
+            <Text style={styles.revenueSubSub}>{todayDelivered.length} delivered</Text>
+          </View>
+          <View style={styles.revenueSubDivider} />
+          <View style={styles.revenueSubItem}>
+            <Text style={styles.revenueSubLabel}>Total Delivered</Text>
+            <Text style={styles.revenueSubValue}>{deliveredOrders.length} Orders</Text>
+            <Text style={styles.revenueSubSub}>Fulfilled</Text>
+          </View>
+          <View style={styles.revenueSubDivider} />
+          <View style={styles.revenueSubItem}>
+            <Text style={styles.revenueSubLabel}>In Pipeline</Text>
+            <Text style={[styles.revenueSubValue, { color: '#FCD34D' }]}>₹{pipelineAmount.toFixed(0)}</Text>
+            <Text style={styles.revenueSubSub}>{activeOrders.length} active</Text>
+          </View>
+        </View>
+
+        <View style={styles.tapToViewHintRow}>
+          <Ionicons name="receipt-outline" size={13} color="#A7F3D0" />
+          <Text style={styles.tapToViewHintText}>
+            Tap anywhere on this card to view all order history & bill details ➔
           </Text>
         </View>
-        <View style={styles.statCard}>
-          <Text style={[styles.statValue, { color: '#3B82F6' }]}>{acceptedOrders.length}</Text>
+      </TouchableOpacity>
+
+      {/* 📊 UPDATED DASHBOARD STATS GRID (6 INTERACTIVE TILES) */}
+      <View style={styles.statsContainer}>
+        {/* Stat 1: Total Amount Earned */}
+        <TouchableOpacity 
+          style={[styles.statCard, styles.statCardEarned]}
+          activeOpacity={0.8}
+          onPress={() => setShowEarningsModal(true)}
+        >
+          <View style={styles.statIconBadge}>
+            <Ionicons name="cash" size={14} color="#059669" />
+          </View>
+          <Text style={[styles.statValue, { color: '#059669' }]}>₹{totalEarnedRevenue.toFixed(0)}</Text>
+          <Text style={[styles.statLabel, { color: '#047857', fontWeight: '800' }]}>Total Earned</Text>
+        </TouchableOpacity>
+
+        {/* Stat 2: Total Orders */}
+        <TouchableOpacity 
+          style={styles.statCard}
+          activeOpacity={0.8}
+          onPress={() => setShowEarningsModal(true)}
+        >
+          <View style={[styles.statIconBadge, { backgroundColor: '#F1F5F9' }]}>
+            <Ionicons name="receipt" size={14} color="#475569" />
+          </View>
+          <Text style={styles.statValue}>{shopOrders.length}</Text>
+          <Text style={styles.statLabel}>Total Orders</Text>
+        </TouchableOpacity>
+
+        {/* Stat 3: Pending Orders */}
+        <TouchableOpacity 
+          style={styles.statCard}
+          activeOpacity={0.8}
+          onPress={() => router.push('/(tabs)/orders' as any)}
+        >
+          <View style={[styles.statIconBadge, { backgroundColor: '#FEF3C7' }]}>
+            <Ionicons name="time" size={14} color="#D97706" />
+          </View>
+          <Text style={[styles.statValue, { color: '#D97706' }]}>{pendingOrders.length}</Text>
+          <Text style={[styles.statLabel, pendingOrders.length > 0 && { color: '#D97706', fontWeight: '800' }]}>
+            Pending
+          </Text>
+        </TouchableOpacity>
+
+        {/* Stat 4: Accepted & Preparing */}
+        <TouchableOpacity 
+          style={styles.statCard}
+          activeOpacity={0.8}
+          onPress={() => router.push('/(tabs)/orders' as any)}
+        >
+          <View style={[styles.statIconBadge, { backgroundColor: '#DBEAFE' }]}>
+            <Ionicons name="flash" size={14} color="#2563EB" />
+          </View>
+          <Text style={[styles.statValue, { color: '#2563EB' }]}>{acceptedOrders.length}</Text>
           <Text style={styles.statLabel}>Accepted</Text>
-        </View>
-        <View style={styles.statCard}>
+        </TouchableOpacity>
+
+        {/* Stat 5: Delivered Orders */}
+        <TouchableOpacity 
+          style={styles.statCard}
+          activeOpacity={0.8}
+          onPress={() => setShowEarningsModal(true)}
+        >
+          <View style={[styles.statIconBadge, { backgroundColor: '#DCFCE7' }]}>
+            <Ionicons name="checkmark-done" size={14} color="#16A34A" />
+          </View>
+          <Text style={[styles.statValue, { color: '#16A34A' }]}>{deliveredOrders.length}</Text>
+          <Text style={styles.statLabel}>Delivered</Text>
+        </TouchableOpacity>
+
+        {/* Stat 6: Inventory Items */}
+        <TouchableOpacity 
+          style={styles.statCard}
+          activeOpacity={0.8}
+          onPress={() => router.push('/(tabs)/products' as any)}
+        >
+          <View style={[styles.statIconBadge, { backgroundColor: '#F3E8FF' }]}>
+            <Ionicons name="cube" size={14} color="#9333EA" />
+          </View>
           <Text style={styles.statValue}>{shopProducts.length}</Text>
-          <Text style={styles.statLabel}>Items</Text>
-        </View>
+          <Text style={styles.statLabel}>Products</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Quick Action Bar */}
       <View style={styles.quickActionsBar}>
         <TouchableOpacity 
           style={styles.actionBtnAddProduct}
-          onPress={() => router.push('/(shopkeeper)/add-product' as any)}
+          onPress={() => router.push('/add-product' as any)}
         >
           <Ionicons name="add-circle" size={18} color="#FFFFFF" />
           <Text style={styles.actionBtnText}>Add Item</Text>
@@ -116,7 +321,7 @@ export default function ShopkeeperDashboardScreen() {
 
         <TouchableOpacity 
           style={styles.actionBtnManage}
-          onPress={() => router.push('/(shopkeeper)/(tabs)/products' as any)}
+          onPress={() => router.push('/(tabs)/products' as any)}
         >
           <Ionicons name="cube-outline" size={18} color="#059669" />
           <Text style={[styles.actionBtnText, { color: '#059669' }]}>Manage Stock</Text>
@@ -124,18 +329,18 @@ export default function ShopkeeperDashboardScreen() {
 
         <TouchableOpacity 
           style={styles.actionBtnSwitch}
-          onPress={() => router.push('/(developer)/dashboard' as any)}
+          onPress={() => router.push('/(tabs)/orders' as any)}
         >
-          <Ionicons name="code-slash" size={18} color="#3B82F6" />
-          <Text style={[styles.actionBtnText, { color: '#3B82F6' }]}>Dev View</Text>
+          <Ionicons name="receipt-outline" size={18} color="#3B82F6" />
+          <Text style={[styles.actionBtnText, { color: '#3B82F6' }]}>Live Orders ({shopOrders.length})</Text>
         </TouchableOpacity>
       </View>
 
       {/* Recent Orders Section */}
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>My Store Orders ({shopOrders.length})</Text>
-        <TouchableOpacity onPress={() => router.push('/(shopkeeper)/(tabs)/orders' as any)}>
-          <Text style={styles.seeAllText}>View All</Text>
+        <Text style={styles.sectionTitle}>Recent Orders ({shopOrders.length})</Text>
+        <TouchableOpacity onPress={() => setShowEarningsModal(true)}>
+          <Text style={styles.seeAllText}>View All History ➔</Text>
         </TouchableOpacity>
       </View>
 
@@ -149,13 +354,18 @@ export default function ShopkeeperDashboardScreen() {
             </Text>
           </View>
         ) : (
-          shopOrders.slice(0, 5).map(order => {
+          shopOrders.slice(0, 6).map(order => {
             const statusInfo = getOrderStatusInfo(order.status);
             return (
-              <View key={order.id} style={styles.orderCard}>
+              <TouchableOpacity 
+                key={order.id} 
+                style={styles.orderCard}
+                activeOpacity={0.9}
+                onPress={() => setSelectedOrder(order)}
+              >
                 <View style={styles.orderHeader}>
                   <View>
-                    <Text style={styles.orderId}>Order #{order.id.slice(-6)}</Text>
+                    <Text style={styles.orderId}>Order #{order.id.slice(-6).toUpperCase()}</Text>
                     <Text style={styles.orderTimestamp}>
                       {new Date(order.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}, {new Date(order.created_at).toLocaleDateString()}
                     </Text>
@@ -184,7 +394,10 @@ export default function ShopkeeperDashboardScreen() {
 
                 <View style={styles.orderDetails}>
                   <Text style={styles.itemCount}>{order.items?.length || 1} items</Text>
-                  <Text style={styles.totalAmount}>{formatPrice(order.total)}</Text>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={styles.totalAmount}>{formatPrice(order.total)}</Text>
+                    <Text style={styles.clickDetailsHint}>Tap for bill details ➔</Text>
+                  </View>
                 </View>
 
                 {order.status === 'pending' && (
@@ -232,11 +445,289 @@ export default function ShopkeeperDashboardScreen() {
                     </TouchableOpacity>
                   </View>
                 )}
-              </View>
+              </TouchableOpacity>
             );
           })
         )}
       </View>
+
+      {/* ========================================================================= */}
+      {/* 📊 FULL ORDER HISTORY & EARNINGS BREAKDOWN MODAL                            */}
+      {/* ========================================================================= */}
+      <Modal
+        visible={showEarningsModal}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={() => setShowEarningsModal(false)}
+      >
+        <View style={styles.modalContainer}>
+          {/* Modal Header */}
+          <View style={styles.modalHeader}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <TouchableOpacity
+                style={styles.modalCloseBtn}
+                onPress={() => setShowEarningsModal(false)}
+              >
+                <Ionicons name="close" size={22} color="#0F172A" />
+              </TouchableOpacity>
+              <View>
+                <Text style={styles.modalHeaderTitle}>Store Order History & Earnings</Text>
+                <Text style={styles.modalHeaderSubtitle}>{activeShop?.name || 'My Store'}</Text>
+              </View>
+            </View>
+            <View style={styles.modalHeaderBadge}>
+              <Text style={styles.modalHeaderBadgeText}>{modalOrders.length} orders</Text>
+            </View>
+          </View>
+
+          {/* Revenue Summary Card */}
+          <View style={styles.modalSummaryCard}>
+            <View style={styles.modalSummaryTop}>
+              <View>
+                <Text style={styles.modalSummaryLabel}>
+                  {earningsTimeFilter === 'all' ? 'All-Time Revenue' : earningsTimeFilter === 'today' ? "Today's Revenue" : earningsTimeFilter === 'week' ? 'Last 7 Days' : 'Delivered Revenue'}
+                </Text>
+                <Text style={styles.modalSummaryAmount}>₹{modalEarningsSum.toFixed(0)}</Text>
+              </View>
+              <View style={styles.modalSummaryStatsCol}>
+                <View style={styles.statPill}>
+                  <Text style={styles.statPillText}>
+                    📦 {modalOrders.filter(o => o.status === 'delivered').length} Delivered
+                  </Text>
+                </View>
+                <View style={[styles.statPill, { backgroundColor: '#FEF3C7' }]}>
+                  <Text style={[styles.statPillText, { color: '#B45309' }]}>
+                    ⏳ {modalOrders.filter(o => o.status !== 'delivered' && o.status !== 'cancelled').length} Active
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Time Filter Tabs */}
+            <View style={styles.modalTimeFilterRow}>
+              {[
+                { id: 'all', label: 'All Orders' },
+                { id: 'today', label: 'Today' },
+                { id: 'week', label: 'This Week' },
+                { id: 'delivered', label: 'Delivered' },
+              ].map((filter) => (
+                <TouchableOpacity
+                  key={filter.id}
+                  style={[
+                    styles.modalTimeTab,
+                    earningsTimeFilter === filter.id && styles.modalTimeTabActive,
+                  ]}
+                  onPress={() => setEarningsTimeFilter(filter.id as any)}
+                >
+                  <Text
+                    style={[
+                      styles.modalTimeTabText,
+                      earningsTimeFilter === filter.id && styles.modalTimeTabTextActive,
+                    ]}
+                  >
+                    {filter.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Search bar inside History */}
+          <View style={styles.modalSearchContainer}>
+            <Ionicons name="search" size={16} color="#94A3B8" />
+            <TextInput
+              style={styles.modalSearchInput}
+              placeholder="Search by customer name, phone, or order #..."
+              placeholderTextColor="#94A3B8"
+              value={earningsSearchQuery}
+              onChangeText={setEarningsSearchQuery}
+            />
+            {earningsSearchQuery ? (
+              <TouchableOpacity onPress={() => setEarningsSearchQuery('')}>
+                <Ionicons name="close-circle" size={16} color="#94A3B8" />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+
+          {/* Orders History List */}
+          <FlatList
+            data={modalOrders}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.modalListContent}
+            ListEmptyComponent={() => (
+              <View style={styles.modalEmptyState}>
+                <Ionicons name="receipt-outline" size={48} color="#CBD5E1" />
+                <Text style={styles.modalEmptyTitle}>No orders found</Text>
+                <Text style={styles.modalEmptySub}>Orders placed in this time period will appear here with full pricing details.</Text>
+              </View>
+            )}
+            renderItem={({ item }) => {
+              const statusInfo = getOrderStatusInfo(item.status);
+              const itemsCount = item.items?.reduce((cnt, it) => cnt + it.quantity, 0) || item.items?.length || 1;
+
+              return (
+                <TouchableOpacity
+                  style={styles.earningOrderCard}
+                  activeOpacity={0.85}
+                  onPress={() => setSelectedOrder(item)}
+                >
+                  <View style={styles.earningOrderTop}>
+                    <View>
+                      <Text style={styles.earningOrderId}>Order #{item.id.slice(-6).toUpperCase()}</Text>
+                      <Text style={styles.earningOrderDate}>
+                        {new Date(item.created_at).toLocaleDateString()} at {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </Text>
+                    </View>
+                    <View style={styles.earningOrderPriceBox}>
+                      <Text style={styles.earningOrderAmount}>₹{item.total || 0}</Text>
+                      <View style={[styles.miniStatusBadge, { backgroundColor: statusInfo.color + '15' }]}>
+                        <Text style={[styles.miniStatusText, { color: statusInfo.color }]}>
+                          {item.status.toUpperCase()}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+
+                  <View style={styles.earningOrderCustomerRow}>
+                    <Ionicons name="person-circle-outline" size={16} color="#64748B" />
+                    <Text style={styles.earningCustomerText}>
+                      {item.customer_name || 'Customer'} • {item.customer_phone || '+91 98480 12345'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.earningOrderItemsSummary}>
+                    <Text style={styles.earningItemsCountText}>
+                      🛒 {itemsCount} items: {item.items?.map(it => `${it.quantity}x ${it.product_name}`).join(', ') || 'Grocery items'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.earningOrderFooter}>
+                    <Text style={styles.earningPaymentMethod}>
+                      {item.payment_method === 'online' || item.payment_status === 'paid' ? '💳 Prepaid Online' : item.payment_method === 'upi_on_delivery' ? '📱 UPI QR' : '💵 Cash on Delivery'}
+                    </Text>
+                    <View style={styles.earningViewDetailBtn}>
+                      <Text style={styles.earningViewDetailText}>Click for Bill & Details</Text>
+                      <Ionicons name="arrow-forward" size={13} color="#10B981" />
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            }}
+          />
+        </View>
+      </Modal>
+
+      {/* 🧾 QUICK ORDER DETAILS MODAL */}
+      <Modal
+        visible={!!selectedOrder}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setSelectedOrder(null)}
+      >
+        <View style={styles.detailModalOverlay}>
+          <View style={styles.detailModalCard}>
+            {selectedOrder && (
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <View style={styles.detailHeader}>
+                  <View>
+                    <Text style={styles.detailTitle}>Order #{selectedOrder.id.slice(-6).toUpperCase()}</Text>
+                    <Text style={styles.detailTime}>
+                      {new Date(selectedOrder.created_at).toLocaleString()}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.detailCloseBtn}
+                    onPress={() => setSelectedOrder(null)}
+                  >
+                    <Ionicons name="close" size={20} color="#64748B" />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Status & Amount */}
+                <View style={styles.detailPillsRow}>
+                  <View style={[styles.detailStatusPill, { backgroundColor: getOrderStatusInfo(selectedOrder.status).color + '20' }]}>
+                    <Text style={[styles.detailStatusText, { color: getOrderStatusInfo(selectedOrder.status).color }]}>
+                      Status: {selectedOrder.status.toUpperCase()}
+                    </Text>
+                  </View>
+                  <View style={[styles.detailStatusPill, { backgroundColor: '#ECFDF5' }]}>
+                    <Text style={[styles.detailStatusText, { color: '#059669' }]}>
+                      Earned: ₹{selectedOrder.total || 0}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Customer Details */}
+                <View style={styles.detailSection}>
+                  <Text style={styles.detailSectionTitle}>Customer & Delivery Info</Text>
+                  <View style={styles.detailBox}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={styles.detailCustomerName}>{selectedOrder.customer_name || 'Customer'}</Text>
+                      {selectedOrder.customer_phone ? (
+                        <TouchableOpacity
+                          style={styles.modalCallBtn}
+                          onPress={() => openPhoneCall(selectedOrder.customer_phone || '', selectedOrder.customer_name || 'Customer')}
+                        >
+                          <Ionicons name="call" size={12} color="#0284C7" />
+                          <Text style={styles.modalCallBtnText}>Call</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+                    <Text style={styles.detailCustomerPhone}>{selectedOrder.customer_phone || '+91 98480 12345'}</Text>
+                    <Text style={styles.detailCustomerAddress}>{selectedOrder.delivery_address || 'Banjara Hills, Hyderabad'}</Text>
+                  </View>
+                </View>
+
+                {/* Items Ordered */}
+                <View style={styles.detailSection}>
+                  <Text style={styles.detailSectionTitle}>
+                    Order Items ({selectedOrder.items?.length || 0})
+                  </Text>
+                  <View style={styles.detailBox}>
+                    {selectedOrder.items && selectedOrder.items.map((prod, idx) => (
+                      <View key={prod.id || idx} style={styles.detailItemRow}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.detailItemName}>{prod.product_name}</Text>
+                          <Text style={styles.detailItemSub}>{prod.quantity} × {formatPrice(prod.product_price)}</Text>
+                        </View>
+                        <Text style={styles.detailItemTotal}>
+                          {formatPrice(prod.total || prod.product_price * prod.quantity)}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+
+                {/* Payment Summary */}
+                <View style={styles.detailSection}>
+                  <Text style={styles.detailSectionTitle}>Bill Breakdown</Text>
+                  <View style={styles.detailBox}>
+                    <View style={styles.billRow}>
+                      <Text style={styles.billLabel}>Item Subtotal</Text>
+                      <Text style={styles.billValue}>{formatPrice(selectedOrder.subtotal || selectedOrder.total)}</Text>
+                    </View>
+                    <View style={styles.billRow}>
+                      <Text style={styles.billLabel}>Delivery Fee</Text>
+                      <Text style={styles.billValue}>{formatPrice(selectedOrder.delivery_fee || 0)}</Text>
+                    </View>
+                    <View style={[styles.billRow, styles.billTotalRow]}>
+                      <Text style={styles.billTotalLabel}>Total Order Value</Text>
+                      <Text style={styles.billTotalValue}>{formatPrice(selectedOrder.total || 0)}</Text>
+                    </View>
+                  </View>
+                </View>
+
+                <TouchableOpacity
+                  style={styles.detailDoneBtn}
+                  onPress={() => setSelectedOrder(null)}
+                >
+                  <Text style={styles.detailDoneBtnText}>Done</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
 
       <View style={{ height: 40 }} />
     </ScrollView>
@@ -254,27 +745,32 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#E2E8F0',
   },
-  storeBadge: {
+  headerBackBtn: {
+    padding: 6,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 8,
+  },
+  headerLogoutBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: '#ECFDF5',
     paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingVertical: 5,
     borderRadius: 6,
-    alignSelf: 'flex-start',
-    marginBottom: 6,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
   },
-  storeBadgeText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#059669',
+  headerLogoutText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#EF4444',
   },
   shopPickerWrapper: {
-    marginVertical: 4,
+    marginTop: 4,
   },
   shopPickerLabel: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: '#64748B',
   },
@@ -283,63 +779,203 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 8,
     backgroundColor: '#F1F5F9',
-    marginRight: 6,
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-  },
-  shopChoicePillActive: {
-    backgroundColor: '#10B981',
-    borderColor: '#059669',
-  },
-  shopChoiceText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#475569',
-  },
-  shopChoiceTextActive: {
-    color: '#FFFFFF',
-  },
-  shopName: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: '#0F172A',
-    marginBottom: 2,
-  },
-  shopAddress: {
-    fontSize: 12,
-    color: '#64748B',
-    marginTop: 2,
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    padding: 16,
-    gap: 12,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-    padding: 14,
-    borderRadius: 14,
-    alignItems: 'center',
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
-  statValue: {
+  shopChoicePillActive: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#059669',
+  },
+  shopChoiceText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  shopChoiceTextActive: {
+    color: '#059669',
+    fontWeight: '800',
+  },
+  shopName: {
     fontSize: 20,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  shopAddress: {
+    fontSize: 13,
+    color: '#64748B',
+    marginTop: 4,
+  },
+
+  /* 💰 PROMINENT DASHBOARD REVENUE CARD */
+  revenueBannerCard: {
+    marginHorizontal: 14,
+    marginTop: 14,
+    marginBottom: 6,
+    backgroundColor: '#064E3B',
+    borderRadius: 18,
+    padding: 16,
+    shadowColor: '#059669',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: '#047857',
+  },
+  revenueBannerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  revenueBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  rupeeCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#10B981',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  rupeeIcon: {
+    color: '#FFFFFF',
+    fontSize: 22,
     fontWeight: '900',
-    color: '#10B981',
+  },
+  revenueBannerTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#6EE7B7',
+    letterSpacing: 0.8,
+  },
+  revenueBannerAmount: {
+    fontSize: 26,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
+  },
+  orderDetailBadge: {
+    backgroundColor: '#042F2E',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#0D9488',
+  },
+  orderDetailBadgeText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#34D399',
+  },
+  revenueSubRow: {
+    flexDirection: 'row',
+    backgroundColor: '#022C22',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'space-around',
+  },
+  revenueSubItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  revenueSubDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: '#065F46',
+  },
+  revenueSubLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#9CA3AF',
+    marginBottom: 2,
+    textTransform: 'uppercase',
+  },
+  revenueSubValue: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#F9FAFB',
+  },
+  revenueSubSub: {
+    fontSize: 10,
+    color: '#6EE7B7',
+    fontWeight: '600',
+    marginTop: 1,
+  },
+  tapToViewHintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#065F46',
+    justifyContent: 'center',
+  },
+  tapToViewHintText: {
+    fontSize: 11,
+    color: '#A7F3D0',
+    fontWeight: '700',
+  },
+
+  /* 📊 STATS GRID (6 TILES) */
+  statsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    padding: 10,
+    gap: 8,
+  },
+  statCard: {
+    width: '31.5%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  statCardEarned: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#A7F3D0',
+  },
+  statIconBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#DCFCE7',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  statValue: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#0F172A',
   },
   statLabel: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#64748B',
-    marginTop: 2,
     fontWeight: '600',
+    marginTop: 2,
+    textAlign: 'center',
   },
+
+  /* QUICK ACTIONS */
   quickActionsBar: {
     flexDirection: 'row',
-    paddingHorizontal: 16,
-    gap: 10,
-    marginBottom: 16,
+    paddingHorizontal: 14,
+    marginVertical: 6,
+    gap: 8,
   },
   actionBtnAddProduct: {
     flex: 1,
@@ -347,79 +983,85 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    backgroundColor: '#10B981',
-    paddingVertical: 12,
+    backgroundColor: '#059669',
+    paddingVertical: 11,
     borderRadius: 10,
   },
   actionBtnManage: {
-    flex: 1.2,
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
     backgroundColor: '#ECFDF5',
-    paddingVertical: 12,
+    paddingVertical: 11,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: '#A7F3D0',
   },
   actionBtnSwitch: {
-    flex: 0.9,
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
     backgroundColor: '#EFF6FF',
-    paddingVertical: 12,
+    paddingVertical: 11,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: '#BFDBFE',
   },
   actionBtnText: {
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '700',
     color: '#FFFFFF',
   },
+
+  /* SECTION HEADER */
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    marginBottom: 10,
+    marginTop: 14,
+    marginBottom: 8,
   },
   sectionTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
     color: '#0F172A',
   },
   seeAllText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#10B981',
+    color: '#059669',
   },
+
+  /* ORDERS LIST */
   ordersList: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     gap: 10,
   },
   emptyOrdersCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 14,
-    padding: 24,
+    padding: 30,
     alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
   emptyOrdersTitle: {
     fontSize: 15,
-    fontWeight: '800',
-    color: '#0F172A',
+    fontWeight: '700',
+    color: '#334155',
     marginTop: 8,
+    marginBottom: 4,
   },
   emptyOrdersSubtitle: {
     fontSize: 12,
     color: '#64748B',
     textAlign: 'center',
-    marginTop: 4,
     lineHeight: 16,
   },
   orderCard: {
@@ -428,98 +1070,513 @@ const styles = StyleSheet.create({
     padding: 14,
     borderWidth: 1,
     borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
   },
   orderHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
+    alignItems: 'flex-start',
+    marginBottom: 8,
   },
   orderId: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '800',
     color: '#0F172A',
   },
+  orderTimestamp: {
+    fontSize: 11,
+    color: '#94A3B8',
+    marginTop: 2,
+  },
   statusBadge: {
-    backgroundColor: '#ECFDF5',
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 6,
-  },
-  statusBadgePending: {
-    backgroundColor: '#FEF3C7',
+    borderRadius: 8,
   },
   statusText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#059669',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  itemsSummaryBox: {
+    backgroundColor: '#F8FAFC',
+    padding: 8,
+    borderRadius: 8,
+    marginVertical: 6,
+  },
+  orderItemLine: {
+    fontSize: 12,
+    color: '#334155',
+    fontWeight: '500',
   },
   customerAddress: {
     fontSize: 12,
     color: '#64748B',
-    marginBottom: 8,
+    marginTop: 2,
   },
   orderDetails: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 6,
+    marginTop: 8,
+    paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: '#F1F5F9',
   },
   itemCount: {
     fontSize: 12,
     color: '#64748B',
+    fontWeight: '500',
   },
   totalAmount: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '900',
-    color: '#0F172A',
+    color: '#059669',
+  },
+  clickDetailsHint: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#10B981',
+    marginTop: 1,
   },
   actionButtons: {
     flexDirection: 'row',
     gap: 8,
-    marginTop: 8,
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
   },
   acceptButton: {
     flex: 1,
-    backgroundColor: '#10B981',
+    backgroundColor: '#059669',
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  rejectButton: {
+    paddingHorizontal: 12,
+    backgroundColor: '#FEE2E2',
     paddingVertical: 8,
     borderRadius: 8,
     alignItems: 'center',
   },
   buttonText: {
     color: '#FFFFFF',
-    fontWeight: '800',
     fontSize: 12,
-  },
-  rejectButton: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    backgroundColor: '#FEE2E2',
-    borderRadius: 8,
-    alignItems: 'center',
+    fontWeight: '700',
   },
   rejectButtonText: {
     color: '#EF4444',
-    fontWeight: '800',
     fontSize: 12,
+    fontWeight: '700',
   },
-  orderTimestamp: {
-    fontSize: 11,
+
+  /* 📊 EARNINGS MODAL STYLES */
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#F8FAFC',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  modalCloseBtn: {
+    padding: 6,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 20,
+  },
+  modalHeaderTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  modalHeaderSubtitle: {
+    fontSize: 12,
     color: '#64748B',
+    fontWeight: '500',
+  },
+  modalHeaderBadge: {
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  modalHeaderBadgeText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#059669',
+  },
+  modalSummaryCard: {
+    margin: 14,
+    backgroundColor: '#0F172A',
+    borderRadius: 16,
+    padding: 16,
+  },
+  modalSummaryTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  modalSummaryLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#94A3B8',
+    textTransform: 'uppercase',
+  },
+  modalSummaryAmount: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: '#10B981',
     marginTop: 2,
   },
-  itemsSummaryBox: {
-    backgroundColor: '#F8FAFC',
+  modalSummaryStatsCol: {
+    gap: 6,
+    alignItems: 'flex-end',
+  },
+  statPill: {
+    backgroundColor: '#064E3B',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  statPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#A7F3D0',
+  },
+  modalTimeFilterRow: {
+    flexDirection: 'row',
+    backgroundColor: '#1E293B',
+    borderRadius: 10,
+    padding: 3,
+    gap: 4,
+  },
+  modalTimeTab: {
+    flex: 1,
+    paddingVertical: 6,
+    alignItems: 'center',
     borderRadius: 8,
-    padding: 8,
+  },
+  modalTimeTabActive: {
+    backgroundColor: '#10B981',
+  },
+  modalTimeTabText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#94A3B8',
+  },
+  modalTimeTabTextActive: {
+    color: '#FFFFFF',
+  },
+  modalSearchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 14,
+    marginBottom: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    gap: 8,
+  },
+  modalSearchInput: {
+    flex: 1,
+    fontSize: 13,
+    color: '#0F172A',
+    padding: 0,
+  },
+  modalListContent: {
+    paddingHorizontal: 14,
+    paddingBottom: 30,
+    gap: 12,
+  },
+  modalEmptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 50,
+  },
+  modalEmptyTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#334155',
+    marginTop: 10,
+  },
+  modalEmptySub: {
+    fontSize: 12,
+    color: '#94A3B8',
+    textAlign: 'center',
+    marginTop: 4,
+    paddingHorizontal: 20,
+  },
+
+  /* EARNING ORDER ITEM */
+  earningOrderCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  earningOrderTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
     marginBottom: 8,
+  },
+  earningOrderId: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  earningOrderDate: {
+    fontSize: 11,
+    color: '#94A3B8',
+    marginTop: 2,
+  },
+  earningOrderPriceBox: {
+    alignItems: 'flex-end',
     gap: 3,
   },
-  orderItemLine: {
+  earningOrderAmount: {
+    fontSize: 17,
+    fontWeight: '900',
+    color: '#059669',
+  },
+  miniStatusBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  miniStatusText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  earningOrderCustomerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 6,
+  },
+  earningCustomerText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  earningOrderItemsSummary: {
+    backgroundColor: '#F8FAFC',
+    padding: 8,
+    borderRadius: 8,
+    marginBottom: 10,
+  },
+  earningItemsCountText: {
     fontSize: 12,
     color: '#334155',
+    lineHeight: 16,
+  },
+  earningOrderFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+    paddingTop: 8,
+  },
+  earningPaymentMethod: {
+    fontSize: 11,
     fontWeight: '600',
+    color: '#64748B',
+  },
+  earningViewDetailBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  earningViewDetailText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#10B981',
+  },
+
+  /* 🧾 DETAIL MODAL */
+  detailModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  detailModalCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 20,
+    width: '100%',
+    maxWidth: 450,
+    maxHeight: '90%',
+  },
+  detailHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  detailTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#0F172A',
+  },
+  detailTime: {
+    fontSize: 12,
+    color: '#94A3B8',
+    marginTop: 2,
+  },
+  detailCloseBtn: {
+    padding: 4,
+  },
+  detailPillsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+  },
+  detailStatusPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  detailStatusText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  detailSection: {
+    marginBottom: 14,
+  },
+  detailSectionTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#64748B',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 6,
+  },
+  detailBox: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  detailCustomerName: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  detailCustomerPhone: {
+    fontSize: 12,
+    color: '#0284C7',
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  detailCustomerAddress: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 4,
+    lineHeight: 16,
+  },
+  modalCallBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#E0F2FE',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  modalCallBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0284C7',
+  },
+  detailItemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  detailItemName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  detailItemSub: {
+    fontSize: 11,
+    color: '#64748B',
+  },
+  detailItemTotal: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  billRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  billLabel: {
+    fontSize: 12,
+    color: '#64748B',
+  },
+  billValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1E293B',
+  },
+  billTotalRow: {
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+    paddingTop: 8,
+    marginTop: 4,
+  },
+  billTotalLabel: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#059669',
+  },
+  billTotalValue: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#059669',
+  },
+  detailDoneBtn: {
+    backgroundColor: '#059669',
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  detailDoneBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '800',
   },
 });

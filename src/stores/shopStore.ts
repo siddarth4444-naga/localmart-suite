@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Shop, Product, Category, Order, OrderStatus } from '../types';
-import { realtimeSync } from '../services/realtimeSync';
+import { realtimeSync, getSyncServerUrl } from '../services/realtimeSync';
 
 export const DEFAULT_CATEGORIES: Category[] = [
   { id: 'c1', name: 'Fruits & Veggies', icon: 'nutrition-outline', sort_order: 1 },
@@ -43,9 +43,12 @@ interface ShopState {
   deleteProduct: (id: string) => void;
   toggleProductAvailability: (id: string) => void;
 
-  // Order Actions (Customer + Shopkeeper)
+  // Order & Delivery Actions (Customer + Shopkeeper + Delivery Partner)
   addOrder: (orderData: Partial<Order>) => Order;
   updateOrderStatus: (orderId: string, status: OrderStatus) => void;
+  acceptDelivery: (orderId: string, rider?: { id: string; name: string; phone: string }) => void;
+  pickupDelivery: (orderId: string) => void;
+  completeDelivery: (orderId: string) => void;
 
   // Reset / Clear
   clearAllShops: () => void;
@@ -73,9 +76,10 @@ export const useShopStore = create<ShopState>((set, get) => ({
       let parsedProducts: Product[] = storedProducts ? JSON.parse(storedProducts) : [];
       let parsedOrders: Order[] = storedOrders ? JSON.parse(storedOrders) : [];
 
-      // Fetch latest snapshot from Shared Sync Bridge Server (Port 5000)
+      // Fetch latest snapshot from Shared Sync Bridge Server (Port 5000 / Cloud API)
       try {
-        const syncRes = await fetch('http://localhost:5000/api/sync');
+        const syncUrl = getSyncServerUrl();
+        const syncRes = await fetch(`${syncUrl}/api/sync`);
         if (syncRes.ok) {
           const serverDb = await syncRes.json();
           if (serverDb && Array.isArray(serverDb.shops) && serverDb.shops.length > 0) {
@@ -86,7 +90,7 @@ export const useShopStore = create<ShopState>((set, get) => ({
             AsyncStorage.setItem(STORAGE_KEY_PRODUCTS, JSON.stringify(parsedProducts)).catch(() => {});
             AsyncStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(parsedOrders)).catch(() => {});
           } else if (parsedShops.length > 0 && (!serverDb.shops || serverDb.shops.length === 0)) {
-            fetch('http://localhost:5000/api/sync', {
+            fetch(`${syncUrl}/api/sync`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -144,6 +148,7 @@ export const useShopStore = create<ShopState>((set, get) => ({
       rating: shopData.rating || 5.0,
       rating_count: shopData.rating_count || 1,
       tags: shopData.tags || ['Groceries', 'Local Store', 'Fast Delivery'],
+      ...((shopData as any).password ? { password: (shopData as any).password } : { password: 'store123' }),
     };
 
     const updatedShops = [newShop, ...get().shops];
@@ -302,8 +307,10 @@ export const useShopStore = create<ShopState>((set, get) => ({
       delivery_address: orderData.delivery_address || '',
       delivery_lat: orderData.delivery_lat || 17.4142,
       delivery_lng: orderData.delivery_lng || 78.4335,
-      payment_method: 'cod',
-      payment_status: 'pending',
+      payment_method: orderData.payment_method || 'cod',
+      payment_status: orderData.payment_status || (orderData.payment_method === 'cod' ? 'pending' : 'paid'),
+      payment_id: orderData.payment_id || (orderData.payment_method !== 'cod' ? `TXN_${Date.now().toString(36).toUpperCase()}` : undefined),
+      payment_time: orderData.payment_time || (orderData.payment_method !== 'cod' ? new Date().toISOString() : undefined),
       notes: orderData.notes,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -328,6 +335,65 @@ export const useShopStore = create<ShopState>((set, get) => ({
     AsyncStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(updatedOrders)).catch(() => {});
     realtimeSync.broadcast('ORDER_STATUS_UPDATED', {
       payload: { id: orderId, status },
+      snapshot: { shops: get().shops, products: get().products, orders: updatedOrders }
+    });
+  },
+
+  acceptDelivery: (orderId, rider) => {
+    const updatedOrders = get().orders.map(o => {
+      if (o.id === orderId) {
+        return {
+          ...o,
+          status: 'delivery_accepted' as OrderStatus,
+          delivery_partner: rider || { id: 'dp_1', name: 'Ravi Kumar (Rider)', phone: '+91 98480 12345' },
+          updated_at: new Date().toISOString(),
+        };
+      }
+      return o;
+    });
+    set({ orders: updatedOrders });
+    AsyncStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(updatedOrders)).catch(() => {});
+    realtimeSync.broadcast('ORDER_STATUS_UPDATED', {
+      payload: { id: orderId, status: 'delivery_accepted', rider },
+      snapshot: { shops: get().shops, products: get().products, orders: updatedOrders }
+    });
+  },
+
+  pickupDelivery: (orderId) => {
+    const updatedOrders = get().orders.map(o => {
+      if (o.id === orderId) {
+        return {
+          ...o,
+          status: 'out_for_delivery' as OrderStatus,
+          updated_at: new Date().toISOString(),
+        };
+      }
+      return o;
+    });
+    set({ orders: updatedOrders });
+    AsyncStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(updatedOrders)).catch(() => {});
+    realtimeSync.broadcast('ORDER_STATUS_UPDATED', {
+      payload: { id: orderId, status: 'out_for_delivery' },
+      snapshot: { shops: get().shops, products: get().products, orders: updatedOrders }
+    });
+  },
+
+  completeDelivery: (orderId) => {
+    const updatedOrders = get().orders.map(o => {
+      if (o.id === orderId) {
+        return {
+          ...o,
+          status: 'delivered' as OrderStatus,
+          payment_status: 'paid' as any,
+          updated_at: new Date().toISOString(),
+        };
+      }
+      return o;
+    });
+    set({ orders: updatedOrders });
+    AsyncStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(updatedOrders)).catch(() => {});
+    realtimeSync.broadcast('ORDER_STATUS_UPDATED', {
+      payload: { id: orderId, status: 'delivered', payment_status: 'paid' },
       snapshot: { shops: get().shops, products: get().products, orders: updatedOrders }
     });
   },

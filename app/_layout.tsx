@@ -10,6 +10,9 @@ import { realtimeSync } from '../src/services/realtimeSync';
 import { useShopStore } from '../src/stores/shopStore';
 import { useAuthStore } from '../src/stores/authStore';
 
+import { AppNotificationBanner } from '../src/components/AppNotificationBanner';
+import { InstallAppBanner } from '../src/components/InstallAppBanner';
+
 // Prevent splash screen auto-hiding with safe fallback
 SplashScreen.preventAutoHideAsync().catch(() => {
   /* reload / already hidden */
@@ -18,36 +21,22 @@ SplashScreen.preventAutoHideAsync().catch(() => {
 const queryClient = new QueryClient();
 
 export default function RootLayout() {
-  const [loaded, error] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-  });
-
   useEffect(() => {
     useAuthStore.getState().initialize();
     useShopStore.getState().initialize();
+    SplashScreen.hideAsync().catch(() => {});
     const cleanup = realtimeSync.initListeners();
     return () => {
       if (typeof cleanup === 'function') cleanup();
     };
   }, []);
 
-  useEffect(() => {
-    if (loaded || error) {
-      SplashScreen.hideAsync().catch(() => {});
-    }
-  }, [loaded, error]);
-
-  useEffect(() => {
-    const timeout = setTimeout(() => {
-      SplashScreen.hideAsync().catch(() => {});
-    }, 800);
-    return () => clearTimeout(timeout);
-  }, []);
-
   return (
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
         <StatusBar style="dark" />
+        <InstallAppBanner />
+        <AppNotificationBanner />
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="index" />
           <Stack.Screen name="(auth)" />

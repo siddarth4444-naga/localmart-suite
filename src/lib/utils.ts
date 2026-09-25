@@ -59,3 +59,18 @@ export function getOrderStatusInfo(status: string): { label: string; color: stri
   };
   return statusMap[status] || { label: status, color: '#6B7280', badge: status };
 }
+
+// Get payment method display details
+export function getPaymentMethodInfo(method: string): { label: string; color: string; badge: string; icon: string; isOnline: boolean } {
+  const methodMap: Record<string, { label: string; color: string; badge: string; icon: string; isOnline: boolean }> = {
+    phonepe: { label: 'PhonePe UPI', color: '#5F259F', badge: '🟣 PhonePe UPI', icon: 'phone-portrait', isOnline: true },
+    gpay: { label: 'Google Pay (GPay)', color: '#1A73E8', badge: '🔵 Google Pay', icon: 'logo-google', isOnline: true },
+    card: { label: 'Credit / Debit Card', color: '#0F172A', badge: '💳 Card Paid', icon: 'card', isOnline: true },
+    cod: { label: 'Cash on Delivery', color: '#059669', badge: '💵 Cash on Delivery', icon: 'cash', isOnline: false },
+    upi: { label: 'UPI Payment', color: '#0284C7', badge: '📱 UPI Paid', icon: 'qr-code', isOnline: true },
+    online: { label: 'Online Payment', color: '#10B981', badge: '💳 Online Paid', icon: 'card', isOnline: true },
+    upi_on_delivery: { label: 'UPI on Delivery', color: '#059669', badge: '📲 UPI on Delivery', icon: 'qr-code', isOnline: false },
+  };
+  return methodMap[method] || { label: method || 'Cash on Delivery', color: '#059669', badge: method || 'COD', icon: 'cash', isOnline: false };
+}
+

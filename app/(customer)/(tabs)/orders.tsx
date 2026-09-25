@@ -6,7 +6,7 @@ import { useRouter } from 'expo-router';
 
 import { useShopStore } from '../../../src/stores/shopStore';
 import { useAuthStore } from '../../../src/stores/authStore';
-import { formatPrice, getOrderStatusInfo } from '../../../src/lib/utils';
+import { formatPrice, getOrderStatusInfo, getPaymentMethodInfo } from '../../../src/lib/utils';
 import { Order } from '../../../src/types';
 
 export default function OrdersScreen() {
@@ -168,7 +168,14 @@ export default function OrdersScreen() {
                   <Text style={styles.priceVal}>{item.delivery_fee === 0 ? 'FREE' : formatPrice(item.delivery_fee)}</Text>
                 </View>
                 <View style={[styles.priceRow, { marginTop: 4, paddingTop: 4, borderTopWidth: 1, borderTopColor: '#E2E8F0' }]}>
-                  <Text style={styles.totalPriceLabel}>Total Amount (COD)</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={styles.totalPriceLabel}>Total Amount</Text>
+                    <View style={{ backgroundColor: getPaymentMethodInfo(item.payment_method).color + '15', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                      <Text style={{ fontSize: 10, fontWeight: '800', color: getPaymentMethodInfo(item.payment_method).color }}>
+                        {getPaymentMethodInfo(item.payment_method).badge}
+                      </Text>
+                    </View>
+                  </View>
                   <Text style={styles.totalPriceVal}>{formatPrice(item.total)}</Text>
                 </View>
               </View>
