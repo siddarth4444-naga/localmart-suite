@@ -181,10 +181,10 @@ export const authService = {
       if (registeredUsers.length === 0) {
         registeredUsers = [
           {
-            id: 'owner_demo_1',
+            id: 'owner_localshop_1',
             role: 'shopkeeper',
-            name: 'Sri Sai Kirana & General Store',
-            email: 'srisai.kirana@example.com',
+            name: 'LocalMart General Store',
+            email: 'localshoppp@gmail.com',
             password: 'demopassword',
             phone: '+91 98480 12345',
             address: 'Road No. 12, Banjara Hills, Hyderabad',

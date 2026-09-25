@@ -209,6 +209,28 @@ const server = http.createServer((req, res) => {
             }).catch(() => {});
           }
 
+          // Send New Order Alert Email to Shopkeeper (localshoppp@gmail.com)
+          const merchantEmail = (targetShop && targetShop.owner_email) || 'localshoppp@gmail.com';
+          if (merchantEmail && merchantEmail.includes('@')) {
+            sendEmail({
+              to: merchantEmail,
+              subject: `🚨 NEW ORDER RECEIVED! Order #${order.id.slice(-6)} (₹${order.total}) - ${shopName}`,
+              html: generateEmailHTML({
+                title: `New Customer Order Received! 🛍️`,
+                subtitle: `You have received a new order for <strong>${shopName}</strong>! Customer: <strong>${order.customer_name || 'Customer'}</strong> (${order.customer_phone || ''}).`,
+                orderSummary: {
+                  id: order.id,
+                  shopName,
+                  paymentMethod: (order.payment_method || 'cod').toUpperCase(),
+                  address: order.delivery_address,
+                  total: order.total,
+                },
+                ctaText: 'Accept Order in Merchant App ➔',
+                ctaUrl: 'http://localhost:8082',
+              }),
+            }).catch(() => {});
+          }
+
           // Send SMS update
           if (order.customer_phone) {
             sendSMS({
