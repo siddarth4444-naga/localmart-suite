@@ -1,0 +1,13 @@
+{
+  "name": "localmart-sync-api",
+  "version": "1.0.0",
+  "description": "LocalMart Real-Time Sync & Email/SMS Notification Server",
+  "main": "sync-server.js",
+  "dependencies": {
+    "nodemailer": "^6.10.1"
+  },
+  "scripts": {
+    "start": "node sync-server.js"
+  },
+  "private": true
+}

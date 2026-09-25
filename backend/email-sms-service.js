@@ -1,20 +1,39 @@
-const https = require('https');
-const http = require('http');
+let nodemailer = null;
+try {
+  nodemailer = require('nodemailer');
+} catch (e) {}
 
-// Configuration from environment variables
+// Configuration from environment variables & defaults
 const SMTP_HOST = process.env.SMTP_HOST || 'smtp.gmail.com';
 const SMTP_PORT = process.env.SMTP_PORT || 587;
 const SMTP_USER = process.env.SMTP_USER || process.env.EMAIL_USER || 'localshoppp@gmail.com';
-const SMTP_PASS = process.env.SMTP_PASS || process.env.EMAIL_PASS || '';
+const rawPass = process.env.SMTP_PASS || process.env.EMAIL_PASS || 'drfv eozi btgh iyrm';
+const SMTP_PASS = rawPass.replace(/\s+/g, '');
 const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
 const FAST2SMS_API_KEY = process.env.FAST2SMS_API_KEY || '';
 const STORE_EMAIL = 'localshoppp@gmail.com';
+
+// Setup Gmail Transporter
+let transporter = null;
+if (nodemailer && SMTP_USER && SMTP_PASS) {
+  try {
+    transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: SMTP_USER,
+        pass: SMTP_PASS,
+      },
+    });
+  } catch (e) {
+    console.error('[Nodemailer Init Error]:', e);
+  }
+}
 
 // Active in-memory OTP cache for verification
 const otpCache = new Map();
 
 /**
- * Send real email via Resend API or SMTP
+ * Send real email via Gmail SMTP or Resend API
  */
 async function sendEmail({ to, subject, html, text }) {
   if (!to || !to.includes('@')) {
@@ -28,7 +47,24 @@ async function sendEmail({ to, subject, html, text }) {
   console.log(`📌 Subject: ${subject}`);
   console.log(`======================================================\n`);
 
-  // 1. If Resend API Key is available
+  // 1. Send via Real Gmail SMTP using App Password
+  if (transporter) {
+    try {
+      const info = await transporter.sendMail({
+        from: `"LocalMart Store" <${SMTP_USER}>`,
+        to,
+        subject,
+        html,
+        text: text || subject,
+      });
+      console.log(`✅ [Gmail Live Email Dispatched] MessageId: ${info.messageId}`);
+      return { success: true, provider: 'gmail-smtp', messageId: info.messageId };
+    } catch (err) {
+      console.error('❌ [Gmail SMTP Error]:', err.message);
+    }
+  }
+
+  // 2. If Resend API Key is available
   if (RESEND_API_KEY) {
     try {
       const payload = JSON.stringify({
