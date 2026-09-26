@@ -375,16 +375,17 @@ export default function DeveloperIndexScreen() {
   };
 
   const appUrls = useMemo(() => {
+    const host = typeof window !== 'undefined' && window.location ? (window.location.hostname || 'localhost') : 'localhost';
     const isCloud = typeof window !== 'undefined' && window.location && window.location.hostname.includes('onrender.com');
     if (isCloud) {
+      const origin = window.location.origin;
       return {
-        customer: 'https://localmart-customer.onrender.com',
-        shopkeeper: 'https://localmart-shopkeeper.onrender.com',
-        delivery: 'https://localmart-delivery.onrender.com',
-        backend: 'https://localmart-sync-api.onrender.com/api/sync',
+        customer: `${origin}/customer`,
+        shopkeeper: `${origin}/shopkeeper`,
+        delivery: `${origin}/delivery`,
+        backend: `${origin}/api/sync`,
       };
     }
-    const host = typeof window !== 'undefined' && window.location ? window.location.hostname : 'localhost';
     return {
       customer: `http://${host}:8081`,
       shopkeeper: `http://${host}:8082`,
