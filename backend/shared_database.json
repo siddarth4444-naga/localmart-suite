@@ -462,6 +462,43 @@
   ],
   "orders": [
     {
+      "id": "ord_1790695890675",
+      "customer_id": "u_cust_1790695874558",
+      "customer_name": "Customer (0000)",
+      "customer_phone": "+91 00000 00000",
+      "customer_email": "siddarth4444@gmail.com",
+      "customer": {
+        "id": "u_cust_1790695874558",
+        "name": "Customer (0000)",
+        "phone": "+91 00000 00000",
+        "email": "siddarth4444@gmail.com"
+      },
+      "shop_id": "shop_1789625170165",
+      "status": "pending",
+      "subtotal": 520,
+      "delivery_fee": 0,
+      "total": 525,
+      "delivery_address": "Banjara Hills, Hyderabad",
+      "delivery_lat": 17.4142,
+      "delivery_lng": 78.4335,
+      "payment_method": "cod",
+      "payment_status": "pending",
+      "created_at": "2026-09-29T15:31:30.675Z",
+      "updated_at": "2026-09-29T15:31:30.675Z",
+      "items": [
+        {
+          "id": "item_1790695890675_0",
+          "order_id": "",
+          "product_id": "prod_1790152452269",
+          "product_name": "qqqq",
+          "product_price": 40,
+          "product_image_url": "https://images.unsplash.com/photo-1571771894821-ce9b6c11b08e?auto=format&fit=crop&w=400&q=80",
+          "quantity": 13,
+          "total": 520
+        }
+      ]
+    },
+    {
       "id": "ord_1790689577213",
       "customer_id": "u_cust_1790689557910",
       "shop_id": "shop_1789625170165",
@@ -1398,5 +1435,5 @@
       "delivered_at": "2026-09-08T11:51:21.963Z"
     }
   ],
-  "lastUpdated": 1790691230042
+  "lastUpdated": 1790695890688
 }

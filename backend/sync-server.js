@@ -89,7 +89,7 @@ const server = http.createServer((req, res) => {
         const otp = Math.floor(100000 + Math.random() * 900000).toString();
         const msg = `Your LocalMart verification code is ${otp}. Valid for 10 minutes. Do not share this OTP with anyone.`;
         
-        await sendSMS({ phone, message: msg, otp });
+        await sendSMS({ phone, email, message: msg, otp });
 
         const targetEmail = (email && email.includes('@')) ? email : 'localshoppp@gmail.com';
         const emailRes = await sendEmail({
