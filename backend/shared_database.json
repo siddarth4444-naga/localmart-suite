@@ -462,6 +462,36 @@
   ],
   "orders": [
     {
+      "id": "ord_1790689577213",
+      "customer_id": "u_cust_1790689557910",
+      "shop_id": "shop_1789625170165",
+      "status": "pending",
+      "subtotal": 520,
+      "delivery_fee": 0,
+      "total": 525,
+      "delivery_address": "Banjara Hills, Hyderabad",
+      "delivery_lat": 17.4142,
+      "delivery_lng": 78.4335,
+      "payment_method": "phonepe",
+      "payment_status": "paid",
+      "payment_id": "TXN_PH_20688470",
+      "payment_time": "2026-09-29T13:46:17.213Z",
+      "created_at": "2026-09-29T13:46:17.213Z",
+      "updated_at": "2026-09-29T13:46:17.213Z",
+      "items": [
+        {
+          "id": "item_1790689577213_0",
+          "order_id": "",
+          "product_id": "prod_1790257035655",
+          "product_name": "mile",
+          "product_price": 40,
+          "product_image_url": "https://images.unsplash.com/photo-1571771894821-ce9b6c11b08e?auto=format&fit=crop&w=400&q=80",
+          "quantity": 13,
+          "total": 520
+        }
+      ]
+    },
+    {
       "id": "ord_1790403238539",
       "customer_id": "u_cust_1790403225257",
       "shop_id": "shop_1789625170165",
@@ -1368,5 +1398,5 @@
       "delivered_at": "2026-09-08T11:51:21.963Z"
     }
   ],
-  "lastUpdated": 1790403238544
+  "lastUpdated": 1790689577220
 }
