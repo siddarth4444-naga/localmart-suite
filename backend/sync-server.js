@@ -126,8 +126,9 @@ const server = http.createServer((req, res) => {
     req.on('data', c => body += c);
     req.on('end', () => {
       try {
-        const { phone, otp } = JSON.parse(body || '{}');
-        const result = verifyOTP(phone, otp);
+        const { phone, email, identifier, otp } = JSON.parse(body || '{}');
+        const target = identifier || email || phone;
+        const result = verifyOTP(target, otp);
         res.writeHead(result.success ? 200 : 400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(result));
       } catch (e) {

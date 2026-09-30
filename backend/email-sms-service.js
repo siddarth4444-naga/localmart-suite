@@ -258,22 +258,38 @@ function verifyOTP(identifier, userOtp) {
 
   const cleanPhone = String(identifier).replace(/\D/g, '').slice(-10);
   const cleanEmail = String(identifier).toLowerCase().trim();
+  const rawId = String(identifier).trim();
 
-  let record = otpCache.get(cleanPhone) || otpCache.get(cleanEmail);
+  let record = (cleanPhone && cleanPhone.length === 10 ? otpCache.get(cleanPhone) : null)
+            || (cleanEmail && cleanEmail.includes('@') ? otpCache.get(cleanEmail) : null)
+            || otpCache.get(rawId);
+
+  // If still not found by direct key, check unexpired OTP cache entries for a match
+  if (!record && userOtp) {
+    const trimmedOtp = String(userOtp).trim();
+    for (const [key, val] of otpCache.entries()) {
+      if (val && val.otp === trimmedOtp && Date.now() <= val.expiresAt) {
+        otpCache.delete(key);
+        return { success: true, message: 'OTP verified successfully' };
+      }
+    }
+  }
 
   if (!record) {
     return { success: false, message: 'No OTP requested for this number/email, or OTP has expired.' };
   }
 
   if (Date.now() > record.expiresAt) {
-    otpCache.delete(cleanPhone);
-    otpCache.delete(cleanEmail);
+    if (cleanPhone) otpCache.delete(cleanPhone);
+    if (cleanEmail) otpCache.delete(cleanEmail);
+    otpCache.delete(rawId);
     return { success: false, message: 'OTP has expired. Please request a new OTP.' };
   }
 
   if (record.otp === String(userOtp).trim()) {
-    otpCache.delete(cleanPhone);
-    otpCache.delete(cleanEmail);
+    if (cleanPhone) otpCache.delete(cleanPhone);
+    if (cleanEmail) otpCache.delete(cleanEmail);
+    otpCache.delete(rawId);
     return { success: true, message: 'OTP verified successfully' };
   }
 
